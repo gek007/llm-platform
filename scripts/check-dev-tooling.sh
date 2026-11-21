@@ -40,6 +40,7 @@ check "vercel skills present" test -f ".agents/skills/deploy-to-vercel/SKILL.md"
 check "mux skill present" test -f ".agents/skills/mux-video/SKILL.md"
 check "ui-sdk skill present" test -f ".agents/skills/ui-sdk/SKILL.md"
 check "modern-web-guidance skill present" test -f ".agents/skills/modern-web-guidance/SKILL.md"
+check "eve skill present" test -f ".agents/skills/eve/SKILL.md"
 
 echo "Environment (.env.local has every key in .env.example)"
 check ".env.local complete" node -e "

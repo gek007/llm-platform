@@ -12,6 +12,7 @@ Living document. Update it whenever a step changes the stack, structure, or tool
 | 3 | Clerk ↔ Convex backend integration (Convex accepts Clerk session tokens) | Done | `1dc0684` |
 | 4 | Hosting on Vercel: project, Git deploys, env vars, region; `dev:convex` and `dev:all` scripts | Done | `d5f362c` |
 | 5 | Mux dev tooling (MCP server, CLI, `mux-video` skill, access token on Convex) and the `modern-web-guidance` skill | Done | `1690b0d` |
+| 6 | `eve` agent skill | Done, pending review | — |
 
 The app is a placeholder home page, live at <https://llm-platform-xi.vercel.app>. Convex trusts Clerk tokens (see Clerk ↔ Convex auth), but the Next.js app has no Clerk or Convex providers yet, and it doesn't use Mux yet. Course data comes from typed mocks in `src/lib/courses/`.
 
@@ -253,7 +254,7 @@ Conventions:
 
 ### Skills (`.agents/skills/`)
 
-53 skills, pinned in `skills-lock.json`. Cursor loads them automatically; invoke one manually with `/skill-name`.
+54 skills, pinned in `skills-lock.json`. Cursor loads them automatically; invoke one manually with `/skill-name`.
 
 - **Clerk** (`clerk/skills`, 17): `clerk` router, `clerk-cli`, `clerk-setup`, `clerk-custom-ui`, `clerk-backend-api`, `clerk-orgs`, `clerk-billing`, `clerk-testing`, `clerk-webhooks`, `clerk-migrate`, and web-framework patterns (Next.js, React, React Router, TanStack, Astro, Vue, Nuxt). Native mobile and Chrome-extension skills are excluded.
 - **Convex** (`convex/agent-skills`, 31): all official skills except `convex-auth` (conflicts with Clerk) and `convex-improve-convex-plugin` (uploads session transcripts).
@@ -261,6 +262,7 @@ Conventions:
 - **Mux** (`muxinc/skills`, 1): `mux-video` — finds the current Mux docs page for a topic (APIs, uploads, playback, live, Data, Robots) and answers from it. It recommends Video.js 10 for new web players; Mux Player for web is in maintenance mode.
 - **UI SDK** (`vercel-labs/ui`, 1): `ui-sdk` — composing UI SDK components, building custom behaviors on `@ui-sdk/core`, agent bridge/WebMCP, and keyboard/focus/ARIA testing. UI SDK has no dev MCP server or CLI.
 - **Web platform** (`GoogleChrome/modern-web-guidance`, 1): `modern-web-guidance` — current HTML, CSS and browser-API practices (dialogs, popovers, forms, accessibility, Core Web Vitals, security). It searches its guides with `npx -y modern-web-guidance@latest search "<query>"` (an npm package published by the Chrome team) and retrieves the matching ones. Interactive components still come from UI SDK; this skill guides the HTML, CSS and browser APIs around them. The `chrome-extensions` skill from the same repository is not installed.
+- **AI agents** (`vercel/eve`, 1): `eve` — for building durable backend AI agents with the eve framework (instructions, tools, connections, channels, sandboxes, subagents, schedules, evals). The skill only points to the docs bundled in the `eve` npm package (`node_modules/eve/docs/`), which isn't installed; nothing in the app uses eve yet.
 
 UI SDK's own docs for the installed version are in `node_modules/@ui-sdk/react/docs/` (start at `llms.txt`).
 
