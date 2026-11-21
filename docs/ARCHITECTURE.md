@@ -4,16 +4,23 @@ Living document. Update it whenever a step changes the stack, structure, or tool
 
 ## Status
 
-| Step | Scope | State |
-| ---- | ----- | ----- |
-| 0 | Local AI/dev tooling for Clerk, Convex, Vercel, UI SDK (Hostinger replaced by Vercel in step 4) | Done, pending review |
-| 1 | Next.js app scaffold, UI SDK packages, Vitest + Playwright | Done, pending review |
-| 2 | Source folder structure, styled UI SDK wrappers, typed course mock data | Done, pending review |
-| 3 | Clerk ↔ Convex backend integration (Convex accepts Clerk session tokens) | Done, pending review |
-| 4 | Hosting on Vercel: project, Git deploys, env vars, region (replaces Hostinger) | Done |
-| 5 | Mux dev tooling: MCP server, CLI, `mux-video` skill | Done, pending review |
+| Step | Scope | State | Commit |
+| ---- | ----- | ----- | ------ |
+| 0 | Local AI/dev tooling (MCP servers, CLIs, skills) for Clerk, Convex and UI SDK; Hostinger at first, replaced by Vercel in step 4 | Done | `1dc0684` |
+| 1 | Next.js app scaffold, UI SDK packages, Vitest + Playwright | Done | `1dc0684` |
+| 2 | Source folder structure, styled UI SDK wrappers, typed course mock data | Done | `1dc0684` |
+| 3 | Clerk ↔ Convex backend integration (Convex accepts Clerk session tokens) | Done | `1dc0684` |
+| 4 | Hosting on Vercel: project, Git deploys, env vars, region; `dev:convex` and `dev:all` scripts | Done | `d5f362c` |
+| 5 | Mux dev tooling (MCP server, CLI, `mux-video` skill, access token on Convex) and the `modern-web-guidance` skill | Done | `1690b0d` |
 
-The app is a placeholder home page, live at <https://llm-platform-xi.vercel.app>. Convex trusts Clerk tokens (see Clerk ↔ Convex auth), but the Next.js app has no Clerk or Convex providers yet; course data comes from typed mocks in `src/lib/courses/`.
+The app is a placeholder home page, live at <https://llm-platform-xi.vercel.app>. Convex trusts Clerk tokens (see Clerk ↔ Convex auth), but the Next.js app has no Clerk or Convex providers yet, and it doesn't use Mux yet. Course data comes from typed mocks in `src/lib/courses/`.
+
+### Open items
+
+- **Next step:** wire Clerk and Convex into the Next.js app (`@clerk/nextjs`, `<ClerkProvider>`, `ConvexProviderWithClerk`); see step 4 of Clerk ↔ Convex auth.
+- **Production configuration:** Vercel's Production environment has no variables yet. It needs a Clerk production instance (which requires a custom domain) and a Convex production deploy key. See Hosting on Vercel.
+- **Video lessons:** Mux is set up for development but not used by the app.
+- **Cleanup:** revoke the unused first Mux access token (ID `d6bafe66-…`) in the Mux dashboard.
 
 ## Stack
 
@@ -87,12 +94,13 @@ Environment variables on Vercel (`vercel env ls`):
 
 The app doesn't read any of these variables yet, so production builds work without them.
 
-`vercel deploy` from this folder creates a preview deployment, or a production one with `--prod`. The first CLI deployment (2026-11-21) went to production even without `--prod`, apparently because the project had no production deployment yet. `.vercelignore` keeps CLI uploads to what's in Git; Vercel never uploads `.env.local`, `.vercel/`, `.next/` or `node_modules/`.
+Deployments normally come from Git pushes. `vercel deploy` from this folder creates a preview deployment from the working tree, or a production one with `--prod`. `.vercelignore` keeps CLI uploads to what's in Git; Vercel never uploads `.env.local`, `.vercel/`, `.next/` or `node_modules/`.
 
 ## Environment
 
 | Resource | Name / ID | Dashboard |
 | -------- | --------- | --------- |
+| Git repository | [gek007/llm-platform](https://github.com/gek007/llm-platform) (public), branch `main` | [github.com](https://github.com/gek007/llm-platform) |
 | Clerk application | "LMS Platform" `app_3MQ6Ah3aicMxqGdRvLxQwJi2ljf` (development instance) | [dashboard.clerk.com](https://dashboard.clerk.com) |
 | Convex project | `kostya-shilkrot/llm-platform`: dev deployment `hallowed-iguana-534`, prod deployment `tremendous-firefly-113` (both eu-west-1; prod is empty and read-only to the MCP server) | [dashboard.convex.dev](https://dashboard.convex.dev/t/kostya-shilkrot/llm-platform) |
 | Mux environment | `LMS-Platform` (type development) in the `aicy` organization; empty so far. The Mux MCP and the `mux` CLI (OAuth, environment `aicy-lms-platform`) are both signed in to it | [dashboard.mux.com](https://dashboard.mux.com) |
@@ -124,9 +132,15 @@ Daily development runs two processes, started together by `npm run dev:all`:
 - `npm run dev`: Next.js on port 3000 (or `PORT`).
 - `npm run dev:convex` (`convex dev`): watches `convex/`, typechecks it, regenerates `convex/_generated/` and pushes functions, schema and `auth.config.ts` to the dev deployment on every save. Add `-- --once` to push once and exit.
 
-`dev:all` uses `concurrently`, which prefixes each output line with `[next]` or `[convex]`. If either process exits, it stops the other, and Ctrl+C stops both. Clerk and Vercel are hosted services, so nothing runs locally for them. Next.js allows only one dev server per project folder, so stop any running `npm run dev` before starting `dev:all`.
+`dev:all` uses `concurrently`, which prefixes each output line with `[next]` or `[convex]`. If either process exits, it stops the other, and Ctrl+C stops both. Clerk, Vercel and Mux are hosted services, so nothing runs locally for them. Next.js allows only one dev server per project folder, so stop any running `npm run dev` before starting `dev:all`.
 
-Production credentials (a Clerk production instance, a Convex prod deploy key) are not created yet; they go into Vercel's Production environment variables, never into files.
+Production credentials (a Clerk production instance, a Convex prod deploy key, a Mux production token) are not created yet. They go into the service that reads them (Vercel's Production environment variables or the Convex prod deployment), never into files.
+
+### Workflow
+
+Each step ships with unit tests and end-to-end tests, a pass of `npm run typecheck`, `npm run lint`, `npm test` and `npm run test:e2e`, and a check of the changed screens through the Playwright MCP. This document is updated in the same step. After the owner reviews the step, the changes are committed and pushed to `main`; the push deploys to production on Vercel.
+
+Commits are authored as `gek007 <17905201+gek007@users.noreply.github.com>`, set in this repository's git config. Pushing needs `gek007` as the active GitHub CLI account (`gh auth switch --user gek007`), because the CLI also holds a second account without access to this repository.
 
 ## Repository layout
 
@@ -138,10 +152,15 @@ Production credentials (a Clerk production instance, a Convex prod deploy key) a
 .vercel/                      Local link to the Vercel project, written by `vercel link` (git-ignored)
 .vercelignore                 Files `vercel deploy` must not upload
 AGENTS.md                     Agent instructions (Next.js block is managed by `next dev`)
+README.md                     Quick start: install, dev, deploy and check commands
 convex/                       Convex backend functions; convex/_generated/ is written by `npx convex dev`
   auth.config.ts              Trusts Clerk session tokens (see Clerk ↔ Convex auth)
+  auth.config.test.ts         Unit test for the auth config (never deployed: two dots in the name)
 docs/ARCHITECTURE.md          This file
 e2e/                          Playwright end-to-end tests
+eslint.config.mjs             ESLint config (ignores .agents/, convex/_generated/, test output)
+next.config.ts                Next.js config (Cache Components, partial prefetching, Tailwind loader)
+package.json                  Scripts: dev, dev:convex, dev:all, build, start, lint, typecheck, test, test:watch, test:e2e
 public/                       Static assets
 scripts/check-dev-tooling.sh  Verifies CLIs, MCP config, skills, .env.local, Vercel link; --online adds MCP, Clerk ↔ Convex, Mux sign-in and Vercel env checks
 src/
@@ -158,6 +177,7 @@ src/
 playwright.config.ts          E2E config; builds and starts the app on port 3100
 vitest.config.mts             Unit test config (jsdom, tsconfig paths)
 skills-lock.json              Exact source commit + hash of every installed skill
+tsconfig.json                 TypeScript config (strict, `@/*` alias, excludes .agents/)
 vercel.json                   Vercel project config (function region)
 ```
 
@@ -191,7 +211,7 @@ Defined in `src/lib/courses/types.ts` and mirrored on Convex documents (`_id`, `
 | `getUser(userId)` | A user or `null` |
 | `getCourseDurationMinutes(courseId)` | Sum of lesson durations |
 
-Enrollments and lesson progress are not modeled yet; they arrive with Clerk + Convex.
+Enrollments and lesson progress are not modeled yet; they arrive with Clerk + Convex. Video lessons will reference Mux assets once Mux is integrated.
 
 ## Testing
 
@@ -199,8 +219,9 @@ Enrollments and lesson progress are not modeled yet; they arrive with Clerk + Co
 | ------- | ------------ |
 | `npm run typecheck` | `next typegen` (route types such as `LayoutProps`) then `tsc --noEmit` |
 | `npm run lint` | ESLint |
-| `npm test` | Vitest once; `npm run test:watch` for watch mode |
-| `npm run test:e2e` | Playwright; starts a production server on `PORT` (default 3100) |
+| `npm test` | Vitest once (`src/**/*.test.{ts,tsx}` and `convex/**/*.test.ts`; 24 tests in 5 files); `npm run test:watch` for watch mode |
+| `npm run test:e2e` | Playwright; builds and starts a production server on `PORT` (default 3100) |
+| `scripts/check-dev-tooling.sh [--online]` | Dev tooling and service configuration (see Repository layout) |
 
 Conventions:
 
@@ -222,23 +243,23 @@ Conventions:
 
 ### CLIs
 
-| CLI | Install | Auth |
-| --- | ------- | ---- |
-| `clerk` | `npm i -g clerk` | `clerk auth login`; `clerk link` once the app exists |
-| `convex` | Project dependency (`npm i convex`), run via `npx convex` | `npx convex login` |
-| `vercel` | `brew install vercel` (or `npm i -g vercel`) | `vercel login`; `vercel link` once per machine |
-| `mux` | `brew tap muxinc/tap && brew install muxinc/tap/mux` (or `npm i -g @mux/cli`) | `mux login` (browser; stores credentials in `~/.config/mux/config.json`), or `MUX_TOKEN_ID`/`MUX_TOKEN_SECRET` |
+| CLI | Installed | Install | Auth |
+| --- | --------- | ------- | ---- |
+| `clerk` | 4.4.0 | `npm i -g clerk` | `clerk auth login`; `clerk link --app app_3MQ6Ah3aicMxqGdRvLxQwJi2ljf` once per machine |
+| `convex` | 1.51.0 | Project dependency (`npm i convex`), run via `npx convex` | `npx convex login` |
+| `vercel` | 64.5.0 | `brew install vercel` (or `npm i -g vercel`) | `vercel login`; `vercel link` once per machine |
+| `mux` | 4.0.0 | `brew tap muxinc/tap && brew install muxinc/tap/mux` (or `npm i -g @mux/cli`) | `mux login` (browser; stores credentials in `~/.config/mux/config.json`), or `MUX_TOKEN_ID`/`MUX_TOKEN_SECRET` |
+| `gh` | 2.96.0 | `brew install gh` | `gh auth login`; `gek007` must be the active account to push |
 
 ### Skills (`.agents/skills/`)
 
-Cursor loads these automatically; invoke manually with `/skill-name`.
+53 skills, pinned in `skills-lock.json`. Cursor loads them automatically; invoke one manually with `/skill-name`.
 
 - **Clerk** (`clerk/skills`, 17): `clerk` router, `clerk-cli`, `clerk-setup`, `clerk-custom-ui`, `clerk-backend-api`, `clerk-orgs`, `clerk-billing`, `clerk-testing`, `clerk-webhooks`, `clerk-migrate`, and web-framework patterns (Next.js, React, React Router, TanStack, Astro, Vue, Nuxt). Native mobile and Chrome-extension skills are excluded.
 - **Convex** (`convex/agent-skills`, 31): all official skills except `convex-auth` (conflicts with Clerk) and `convex-improve-convex-plugin` (uploads session transcripts).
 - **Vercel** (2): `deploy-to-vercel` (`vercel-labs/agent-skills`; preview unless production is asked for explicitly, Git-push deploys only with approval) and `vercel-cli` (`vercel/vercel`; CLI reference for deployments, env vars, domains, logs).
 - **Mux** (`muxinc/skills`, 1): `mux-video` — finds the current Mux docs page for a topic (APIs, uploads, playback, live, Data, Robots) and answers from it. It recommends Video.js 10 for new web players; Mux Player for web is in maintenance mode.
 - **UI SDK** (`vercel-labs/ui`, 1): `ui-sdk` — composing UI SDK components, building custom behaviors on `@ui-sdk/core`, agent bridge/WebMCP, and keyboard/focus/ARIA testing. UI SDK has no dev MCP server or CLI.
-
 - **Web platform** (`GoogleChrome/modern-web-guidance`, 1): `modern-web-guidance` — current HTML, CSS and browser-API practices (dialogs, popovers, forms, accessibility, Core Web Vitals, security). It searches its guides with `npx -y modern-web-guidance@latest search "<query>"` (an npm package published by the Chrome team) and retrieves the matching ones. Interactive components still come from UI SDK; this skill guides the HTML, CSS and browser APIs around them. The `chrome-extensions` skill from the same repository is not installed.
 
 UI SDK's own docs for the installed version are in `node_modules/@ui-sdk/react/docs/` (start at `llms.txt`).
@@ -251,11 +272,12 @@ npx skills experimental_install      # restore from skills-lock.json (fresh clon
 scripts/check-dev-tooling.sh --online
 ```
 
-Once a Convex project exists, `npx convex ai-files install` adds Convex guidelines to `AGENTS.md` and `convex/_generated/ai/`.
+Not installed yet: `npx convex ai-files install` would add Convex's coding guidelines to `AGENTS.md` and `convex/_generated/ai/`. Worth doing before writing the first Convex functions.
 
 ### Safety rules
 
-- Never commit secrets. `.env*` is git-ignored (except `.env.example`).
+- Never commit secrets. `.env*` is git-ignored (except `.env.example`). Before every commit, the staged diff is checked for key patterns and for the actual secret values in `.env.local`.
+- Secrets go straight from a file or the clipboard into the service that uses them (`npx convex env set`, `vercel env add`) and are never printed or pasted into chat.
 - Convex MCP never runs with `--dangerously-enable-production-deployments`.
 - The Mux MCP and CLI act on whichever Mux environment they're signed in to; use the Development environment for agent work.
 - Vercel production deploys and production env vars, and Clerk production changes (domains, billing, production instances), require explicit human confirmation.
