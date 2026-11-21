@@ -15,8 +15,9 @@ Living document. Update it whenever a step changes the stack, structure, or tool
 | 6 | `eve` agent skill | Done | `ef228e8` |
 | 7 | First `eve` agent (`Learnly` in `agents/learnly/`), `withEve` Next.js integration, `/learnly` chat UI with UI SDK wrappers, unit + E2E tests | Done | `3d802b1` |
 | 8 | LMS features ([design](superpowers/specs/2026-11-21-lms-features-design.md)): Clerk + Convex in the app, schema and seed, landing and custom pricing (Clerk Billing), course catalog, lesson player (Mux, markdown, quizzes, progress), dashboard, admin panel with Mux uploads, Pro-only AI tutor widget with Clerk-verified auth | Done | `3d802b1` |
+| 9 | Full-page LMS knowledge-graph backdrop on `/`, clickable Mux preview video in `HeroDemo`, custom signed Mux videos for TypeScript Foundations lessons 1–2, Vercel Production deployment | Done | `e507a09` |
 
-Production (<https://llm-platform-xi.vercel.app>) still runs step 6; steps 7 and 8 deploy when pushed to `main`. After step 8 the app is a single-tutor course platform ("Learnly"): free and Pro courses, free-preview lessons, enrollment and progress, a custom pricing page on Clerk Billing, an admin panel for the owner, and a Pro-only AI tutor. Each area has a reference page in `docs/features/`:
+Production (<https://llm-platform-xi.vercel.app>) runs the full Learnly LMS app (backed by the Clerk dev instance and Convex dev deployment `hallowed-iguana-534` until a custom domain and Convex prod deploy key are configured). Each area has a reference page in `docs/features/`:
 
 | Area | Doc | Owns |
 | ---- | --- | ---- |
@@ -44,9 +45,8 @@ Production (<https://llm-platform-xi.vercel.app>) still runs step 6; steps 7 and
 - **Not verified with a live account:** the `pla` claim name and that `aud: "convex"` survived the claims change (no live token was decoded), real checkout, and signed-in/admin/Pro flows (e2e only covers signed-out flows; a Clerk testing-token setup would add them).
 - **Billing in production:** Clerk Billing needs a production instance (custom domain) and Stripe. The tutor needs `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CONVEX_URL` and `TUTOR_AUTHORIZED_PARTIES` (or `NEXT_PUBLIC_APP_URL`) in the agent's environment.
 - **Follow-ups:** per-page `<title>`s for course and lesson pages (they load client-side and use the default title).
-- **Learnly model:** Claude Opus 5.5 called directly through the Anthropic API (`anthropic("claude-opus-5-5")` from `eve/models/anthropic`, `reasoning: "medium"`), not AI Gateway. It reads `ANTHROPIC_API_KEY` from `.env.local` (restart `npm run dev:all` after changing it); production needs the same key in Vercel's Production environment. Anthropic's server-side refusal fallbacks aren't enabled: eve's provider layer doesn't expose that request parameter.
-- **Production configuration:** Vercel's Production environment has no variables yet. It needs a Clerk production instance (which requires a custom domain) and a Convex production deploy key. See Hosting on Vercel.
-- **Video lessons:** Mux is set up for development but not used by the app.
+- **Learnly model:** Claude Opus 5.5 called directly through the Anthropic API (`anthropic("claude-opus-5-5")` from `eve/models/anthropic`, `reasoning: "medium"`), not AI Gateway. It reads `ANTHROPIC_API_KEY` from `.env.local` locally and from Vercel's Production environment. Anthropic's server-side refusal fallbacks aren't enabled: eve's provider layer doesn't expose that request parameter.
+- **Production cutover:** Vercel's Production environment currently points to the dev Clerk instance and Convex dev deployment (`hallowed-iguana-534`) so the app runs live on `*.vercel.app`. Switching to true prod backends needs a custom domain for Clerk Production and a Convex production deploy key (`tremendous-firefly-113`). See Hosting on Vercel.
 - **Cleanup:** revoke the unused first Mux access token (ID `d6bafe66-…`) in the Mux dashboard.
 
 ## Stack
@@ -116,16 +116,16 @@ Environment variables on Vercel (`vercel env ls`):
 
 | Key | Preview, Development | Production |
 | --- | -------------------- | ---------- |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk dev instance | not set yet |
-| `CLERK_SECRET_KEY` | Clerk dev instance (Secret on Preview; Vercel allows no Secrets on Development) | not set yet |
-| `NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_CONVEX_SITE_URL` | Convex dev deployment `hallowed-iguana-534` | not set yet |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk dev instance | Clerk dev instance (until custom domain) |
+| `CLERK_SECRET_KEY` | Clerk dev instance (Secret on Preview; Vercel allows no Secrets on Development) | Clerk dev instance (Secret) |
+| `NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_CONVEX_SITE_URL` | Convex dev deployment `hallowed-iguana-534` | Convex dev deployment `hallowed-iguana-534` (until prod cutover) |
+| `ANTHROPIC_API_KEY` | — | Anthropic API key (Secret) |
+| `TUTOR_AUTHORIZED_PARTIES` | — | `https://llm-platform-xi.vercel.app,https://llm-platform-gek007s-projects.vercel.app` |
 
-`CONVEX_DEPLOYMENT` stays local: only the Convex CLI reads it. Production values wait for two decisions:
+`CONVEX_DEPLOYMENT` stays local: only the Convex CLI reads it. Switching Production from the dev backends to dedicated prod backends waits for two decisions:
 
-- **Clerk:** a production instance requires a custom domain (it can't run on `*.vercel.app`). Until then, production can only use the dev instance.
+- **Clerk:** a production instance requires a custom domain (it can't run on `*.vercel.app`). Until then, production runs on the dev instance.
 - **Convex:** the production build should run `npx convex deploy --cmd 'npm run build'` with a production `CONVEX_DEPLOY_KEY` on Vercel. That pushes `convex/` to `tremendous-firefly-113` and sets `NEXT_PUBLIC_CONVEX_URL` for the build. The prod deployment then also needs `CLERK_FRONTEND_API_URL`.
-
-The app doesn't read any of these variables yet, so production builds work without them.
 
 Deployments normally come from Git pushes. `vercel deploy` from this folder creates a preview deployment from the working tree, or a production one with `--prod`. `.vercelignore` keeps CLI uploads to what's in Git; Vercel never uploads `.env.local`, `.vercel/`, `.next/` or `node_modules/`.
 
@@ -136,7 +136,7 @@ Deployments normally come from Git pushes. `vercel deploy` from this folder crea
 | Git repository | [gek007/llm-platform](https://github.com/gek007/llm-platform) (public), branch `main` | [github.com](https://github.com/gek007/llm-platform) |
 | Clerk application | "LMS Platform" `app_3MQ6Ah3aicMxqGdRvLxQwJi2ljf` (development instance) | [dashboard.clerk.com](https://dashboard.clerk.com) |
 | Convex project | `kostya-shilkrot/llm-platform`: dev deployment `hallowed-iguana-534`, prod deployment `tremendous-firefly-113` (both eu-west-1; prod is empty and read-only to the MCP server) | [dashboard.convex.dev](https://dashboard.convex.dev/t/kostya-shilkrot/llm-platform) |
-| Mux environment | `LMS-Platform` (type development) in the `aicy` organization; no assets yet (checked when signed playback was added); one signing key. The Mux MCP and the `mux` CLI (OAuth, environment `aicy-lms-platform`) are both signed in to it | [dashboard.mux.com](https://dashboard.mux.com) |
+| Mux environment | `LMS-Platform` (type development) in the `aicy` organization; 3 ready 720p assets (`learnly-hero-preview` public on `/`, `learnly-lesson:why-types` and `learnly-lesson:basic-types` signed); one signing key. The Mux MCP and the `mux` CLI (OAuth, environment `aicy-lms-platform`) are both signed in to it | [dashboard.mux.com](https://dashboard.mux.com) |
 | Vercel project | `llm-platform` in "gek007's projects" (see Hosting on Vercel) | [vercel.com/gek007s-projects/llm-platform](https://vercel.com/gek007s-projects/llm-platform) |
 
 `.env.local` (git-ignored, mode 600):
