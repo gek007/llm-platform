@@ -174,6 +174,33 @@ Production credentials (a Clerk production instance, a Convex prod deploy key, a
 
 Each step ships with unit tests and end-to-end tests, a pass of `npm run typecheck`, `npm run lint`, `npm test` and `npm run test:e2e`, and a check of the changed screens through the Playwright MCP. This document is updated in the same step. After the owner reviews the step, the changes are committed and pushed to `main`; the push deploys to production on Vercel.
 
+### Agent deployments (Convex agent mode)
+
+Coding agents never push to the owner's personal dev deployment (`hallowed-iguana-534`): the owner develops and tests against it, and an agent's half-finished schema or functions would land there mid-session. Following Convex's [agent mode](https://docs.convex.dev/cli/agent-mode), each agent that changes `convex/` works in its own git worktree with its own cloud dev deployment:
+
+```bash
+git worktree add ../llm-platform-<task> -b <task>    # or the agent tool's worktree isolation
+cd ../llm-platform-<task>
+scripts/agent-deployment.sh                          # --expiration "in 1 day" to shorten
+```
+
+`scripts/agent-deployment.sh`:
+
+1. copies the non-Convex keys (Clerk, Mux) from the main checkout's `.env.local` into the worktree's `.env.local` (mode 600) and runs `npm ci` if `node_modules` is missing;
+2. creates and selects the dev deployment `kostya-shilkrot:llm-platform:dev/agent-<worktree>`, expiring in 5 days by default (`npx convex deployment create … --type dev --select --expiration`), which writes `CONVEX_DEPLOYMENT` and `NEXT_PUBLIC_CONVEX_*` for the worktree;
+3. copies the deployment env vars (`CLERK_FRONTEND_API_URL`, `MUX_TOKEN_*`, `MUX_SIGNING_*`) from the owner's dev deployment through a mode-600 temp file, never printing them. Convex's recommended alternative, project-level default env vars, can only be set in the dashboard;
+4. saves a deploy key scoped to that deployment as `CONVEX_DEPLOY_KEY` (`npx convex deployment token create … --save-env`). With it set, the worktree's `npx convex` commands can only reach that deployment; `--deployment` and `--prod` are refused;
+5. pushes the functions once and runs `seed:run`.
+
+The script refuses to run in the main checkout (it would repoint the owner's `.env.local`) and does nothing once `CONVEX_DEPLOY_KEY` is set. Verified on 2026-11-21: a test worktree got `abundant-peccary-321` with all five env vars and the 4 seeded courses, while the main checkout stayed on `hallowed-iguana-534`. The CLI can't delete deployments; agent deployments expire on their own, or delete them in the dashboard. Remove the worktree with `git worktree remove <path>` when the branch is merged.
+
+Notes:
+
+- Agent deployments use the Clerk dev instance, so signing in to an agent worktree's app works with the same accounts. The Mux webhook isn't configured for them; video status syncs by polling.
+- Running Next.js in a worktree is fine alongside the owner's dev server: `next dev` writes to `.next/dev`, and `npm run test:e2e` uses port 3100. Stop any server already on 3100 first, because Playwright reuses it outside CI.
+- Convex's other agent-mode option, a local backend (`npx convex dev --once` in a non-interactive shell with no deployment configured), suits ephemeral cloud agents but not this project: it has no default env vars and no public URL for webhooks.
+- Unit tests (`convex-test`) need no deployment at all.
+
 Commits are authored as `gek007 <17905201+gek007@users.noreply.github.com>`, set in this repository's git config. Pushing needs `gek007` as the active GitHub CLI account (`gh auth switch --user gek007`), because the CLI also holds a second account without access to this repository.
 
 ## Repository layout
@@ -210,6 +237,7 @@ eslint.config.mjs             ESLint config (ignores .agents/, convex/_generated
 next.config.ts                Next.js config (Cache Components, partial prefetching, Tailwind loader)
 package.json                  Scripts: dev, dev:convex, dev:all, build, start, lint, typecheck, test, test:watch, test:e2e
 public/                       Static assets
+scripts/agent-deployment.sh   Gives an agent worktree its own Convex dev deployment and scoped deploy key (see Agent deployments)
 scripts/check-dev-tooling.sh  Verifies CLIs, MCP config, skills, .env.local, Vercel link; --online adds MCP, Clerk ↔ Convex, Mux sign-in and Vercel env checks
 src/
   app/                        App Router routes only: /, /pricing, /courses/**, /dashboard, /admin/**, /learnly, /sign-in, /sign-up
@@ -341,5 +369,6 @@ Not installed yet: `npx convex ai-files install` would add Convex's coding guide
 - Never commit secrets. `.env*` is git-ignored (except `.env.example`). Before every commit, the staged diff is checked for key patterns and for the actual secret values in `.env.local`.
 - Secrets go straight from a file or the clipboard into the service that uses them (`npx convex env set`, `vercel env add`) and are never printed or pasted into chat.
 - Convex MCP never runs with `--dangerously-enable-production-deployments`.
+- Agents that change `convex/` use their own deployment (see Agent deployments), not the owner's personal dev deployment. Deploy keys stay in the worktree's git-ignored `.env.local`.
 - The Mux MCP and CLI act on whichever Mux environment they're signed in to; use the Development environment for agent work.
 - Vercel production deploys and production env vars, and Clerk production changes (domains, billing, production instances), require explicit human confirmation.

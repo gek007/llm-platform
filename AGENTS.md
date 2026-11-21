@@ -23,3 +23,7 @@ Every step ships with tests:
 - Unit and component tests: Vitest + Testing Library, colocated as `src/**/*.test.tsx` (`npm test`).
 - End-to-end tests: Playwright in `e2e/`, run against a production build (`npm run test:e2e`).
 - Before finishing: `npm run typecheck`, `npm run lint`, `npm test`, `npm run test:e2e`.
+
+## Convex deployments
+
+Never push schema or function changes to the owner's personal dev deployment (`hallowed-iguana-534`) unless the owner asks. To change `convex/`, work in a git worktree and run `scripts/agent-deployment.sh` first; it gives the worktree its own dev deployment and a scoped deploy key. See "Agent deployments" in `docs/ARCHITECTURE.md`.
