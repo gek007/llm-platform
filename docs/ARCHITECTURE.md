@@ -13,8 +13,8 @@ Living document. Update it whenever a step changes the stack, structure, or tool
 | 4 | Hosting on Vercel: project, Git deploys, env vars, region; `dev:convex` and `dev:all` scripts | Done | `d5f362c` |
 | 5 | Mux dev tooling (MCP server, CLI, `mux-video` skill, access token on Convex) and the `modern-web-guidance` skill | Done | `1690b0d` |
 | 6 | `eve` agent skill | Done | `ef228e8` |
-| 7 | First `eve` agent (`Learnly` in `agents/learnly/`), `withEve` Next.js integration, `/learnly` chat UI with UI SDK wrappers, unit + E2E tests | Done | — |
-| 8 | LMS features ([design](superpowers/specs/2026-11-21-lms-features-design.md)): Clerk + Convex in the app, schema and seed, landing and custom pricing (Clerk Billing), course catalog, lesson player (Mux, markdown, quizzes, progress), dashboard, admin panel with Mux uploads, Pro-only AI tutor widget with Clerk-verified auth | Done | — |
+| 7 | First `eve` agent (`Learnly` in `agents/learnly/`), `withEve` Next.js integration, `/learnly` chat UI with UI SDK wrappers, unit + E2E tests | Done | `3d802b1` |
+| 8 | LMS features ([design](superpowers/specs/2026-11-21-lms-features-design.md)): Clerk + Convex in the app, schema and seed, landing and custom pricing (Clerk Billing), course catalog, lesson player (Mux, markdown, quizzes, progress), dashboard, admin panel with Mux uploads, Pro-only AI tutor widget with Clerk-verified auth | Done | `3d802b1` |
 
 Production (<https://llm-platform-xi.vercel.app>) still runs step 6; steps 7 and 8 deploy when pushed to `main`. After step 8 the app is a single-tutor course platform ("Learnly"): free and Pro courses, free-preview lessons, enrollment and progress, a custom pricing page on Clerk Billing, an admin panel for the owner, and a Pro-only AI tutor. Each area has a reference page in `docs/features/`:
 
