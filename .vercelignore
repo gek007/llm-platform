@@ -6,3 +6,6 @@
 /playwright/.cache/
 /.playwright-mcp/
 /coverage
+**/.eve/
+**/.output/
+**/.workflow-data/

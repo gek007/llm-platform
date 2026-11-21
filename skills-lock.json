@@ -367,10 +367,10 @@
     },
     "ui-sdk": {
       "source": "vercel-labs/ui",
-      "commit": "855bc7fd4df3d61aee33d9d975dc3e4f71debc6c",
+      "commit": "06a7633f9543125163574d508a0bbdc3a173042d",
       "sourceType": "github",
       "skillPath": "packages/core/skills/ui-sdk/SKILL.md",
-      "computedHash": "9a60caf01da3d47beedf627bf1505d922dccc93b04f294c6aa64edf01c46b3ba"
+      "computedHash": "cabe635c8f279e77b50a265c499ea2e8ebd471574b96acfc61a11a147d553e6d"
     },
     "vercel-cli": {
       "source": "vercel/vercel",

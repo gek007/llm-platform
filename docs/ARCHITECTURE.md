@@ -12,13 +12,39 @@ Living document. Update it whenever a step changes the stack, structure, or tool
 | 3 | Clerk ↔ Convex backend integration (Convex accepts Clerk session tokens) | Done | `1dc0684` |
 | 4 | Hosting on Vercel: project, Git deploys, env vars, region; `dev:convex` and `dev:all` scripts | Done | `d5f362c` |
 | 5 | Mux dev tooling (MCP server, CLI, `mux-video` skill, access token on Convex) and the `modern-web-guidance` skill | Done | `1690b0d` |
-| 6 | `eve` agent skill | Done, pending review | — |
+| 6 | `eve` agent skill | Done | `ef228e8` |
+| 7 | First `eve` agent (`Learnly` in `agents/learnly/`), `withEve` Next.js integration, `/learnly` chat UI with UI SDK wrappers, unit + E2E tests | Done | — |
+| 8 | LMS features ([design](superpowers/specs/2026-11-21-lms-features-design.md)): Clerk + Convex in the app, schema and seed, landing and custom pricing (Clerk Billing), course catalog, lesson player (Mux, markdown, quizzes, progress), dashboard, admin panel with Mux uploads, Pro-only AI tutor widget with Clerk-verified auth | Done | — |
 
-The app is a placeholder home page, live at <https://llm-platform-xi.vercel.app>. Convex trusts Clerk tokens (see Clerk ↔ Convex auth), but the Next.js app has no Clerk or Convex providers yet, and it doesn't use Mux yet. Course data comes from typed mocks in `src/lib/courses/`.
+Production (<https://llm-platform-xi.vercel.app>) still runs step 6; steps 7 and 8 deploy when pushed to `main`. After step 8 the app is a single-tutor course platform ("Learnly"): free and Pro courses, free-preview lessons, enrollment and progress, a custom pricing page on Clerk Billing, an admin panel for the owner, and a Pro-only AI tutor. Each area has a reference page in `docs/features/`:
+
+| Area | Doc | Owns |
+| ---- | --- | ---- |
+| Foundation | [foundation.md](features/foundation.md) | Providers, `src/proxy.ts`, Convex schema/API/seed, claims, header/footer, markdown + quiz renderer, theme |
+| Landing and pricing | [landing.md](features/landing.md) | `/`, `/pricing`, Pro plan ID lookup, `CheckoutButton` states |
+| Courses | [course.md](features/course.md) | `/courses`, `/courses/[slug]`, lesson player, `/dashboard` |
+| Admin | [admin.md](features/admin.md) | `/admin/**`, `convex/admin.ts`, Mux upload/sync/webhook |
+| AI tutor | [tutor.md](features/tutor.md) | `agents/learnly/`, `src/components/tutor/`, Clerk auth on the agent channel |
+
+### Access model
+
+- **Admin:** Clerk `publicMetadata.role = "admin"`, copied into the session token by the custom claim `metadata: {{user.public_metadata}}`. Next.js reads `sessionClaims.metadata.role`; Convex reads `identity.metadata.role` (`convex/lib/auth.ts#isAdmin`).
+- **Pro:** Clerk Billing plan `pro` ($19/month; annual stored as a monthly equivalent of $15.83). Next.js uses `has({ plan: "pro" })`; Convex reads the session token's `pla` claim (`u:pro`) in `isPro`, with `users.plan` as an unused fallback for a future billing webhook.
+- **Lessons:** `convex/lib/access.ts#canAccessLesson` decides; Convex leaves out `body` and `muxPlaybackId` for locked lessons. Free course → signed-in users; free-preview lesson → anyone; Pro course → Pro or admin.
+- **Tutor:** the browser sends the Clerk session token; the eve channel verifies it (`verifyToken`, `authorizedParties`) and requires Pro or admin; tools call Convex with that same token, so Convex enforces access again.
+
+### Clerk provider and Cache Components
+
+`src/app/layout.tsx` renders `ClerkClientProvider` (`src/components/providers/clerk-client-provider.tsx`), a `"use client"` wrapper around `<ClerkProvider>`, instead of `<ClerkProvider>` directly. In a Server Component, `ClerkProvider` is an async server wrapper (it awaits a keyless-mode check). On partially prerendered routes with dynamic params (`/courses/[slug]`, the lesson page) the PPR resume then failed with `Expected the resume to render <ReactClerkProvider> in this slot but instead it rendered <ClerkProvider>` and React fell back to client rendering (browser error #419). The app uses neither keyless mode nor Clerk's `dynamic` prop, so the client provider is equivalent. `e2e/courses.spec.ts` fails if those pages log a console error again.
 
 ### Open items
 
-- **Next step:** wire Clerk and Convex into the Next.js app (`@clerk/nextjs`, `<ClerkProvider>`, `ConvexProviderWithClerk`); see step 4 of Clerk ↔ Convex auth.
+- **Owner setup:** set your own Clerk user's `publicMetadata.role` to `"admin"` (dashboard, or the Clerk MCP `update_user_metadata`), and replace the placeholder tutor bio, photo and links in `siteConfig.tutor` (`src/config/site.ts`).
+- **Mux webhook (optional):** create it in the Mux Development environment pointing at `<NEXT_PUBLIC_CONVEX_SITE_URL>/mux/webhook` and run `npx convex env set MUX_WEBHOOK_SECRET …`. Without a secret the webhook returns 503 (fail closed) and video status syncs by polling instead. See [admin.md](features/admin.md).
+- **Not verified with a live account:** the `pla` claim name and that `aud: "convex"` survived the claims change (no live token was decoded), real checkout, and signed-in/admin/Pro flows (e2e only covers signed-out flows; a Clerk testing-token setup would add them).
+- **Billing in production:** Clerk Billing needs a production instance (custom domain) and Stripe. The tutor needs `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CONVEX_URL` and `TUTOR_AUTHORIZED_PARTIES` (or `NEXT_PUBLIC_APP_URL`) in the agent's environment.
+- **Follow-ups:** signed Mux playback for Pro lessons (playback IDs are public, though only sent to authorized users); per-page `<title>`s for course and lesson pages (they load client-side and use the default title).
+- **Model credentials for Learnly:** Learnly routes through Vercel AI Gateway (`openai/gpt-6-luna-fast`); enable AI Gateway billing on the Vercel team (or switch `agents/learnly/agent/agent.ts` to a direct provider model with an API key) to receive live model replies.
 - **Production configuration:** Vercel's Production environment has no variables yet. It needs a Clerk production instance (which requires a custom domain) and a Convex production deploy key. See Hosting on Vercel.
 - **Video lessons:** Mux is set up for development but not used by the app.
 - **Cleanup:** revoke the unused first Mux access token (ID `d6bafe66-…`) in the Mux dashboard.
@@ -32,8 +58,13 @@ The app is a placeholder home page, live at <https://llm-platform-xi.vercel.app>
 | Language | TypeScript (strict), import alias `@/*` → `src/*` | 5.9 |
 | Styling | Tailwind CSS v4 (`@layer ui-sdk;` declared first in `globals.css`) | 4.3.3 |
 | Components | `@ui-sdk/core` + `@ui-sdk/react` (beta, pinned exact) | 0.1.0-beta.13 |
-| Backend SDK + CLI | `convex` (auth config only; no functions or schema yet) | 1.51.0 |
-| Unit/component tests | Vitest + jsdom + Testing Library + jest-dom | Vitest 5.1 |
+| Backend SDK + CLI | `convex` (schema, queries/mutations/actions, HTTP webhook) | 1.51.0 |
+| Auth SDK | `@clerk/nextjs` (`CheckoutButton` from `@clerk/nextjs/experimental`) | 7.10 |
+| Markdown | `react-markdown` + `remark-gfm` + `rehype-highlight` (sync, works on server and client) | — |
+| Animation | `motion` (landing page; respects `prefers-reduced-motion`) | — |
+| Video | `@mux/mux-player-react`, `@mux/mux-uploader-react`, `@mux/mux-node` (Convex actions) | — |
+| Agent SDK + CLI | `eve` + `ai` + `zod` (workspace agent `agents/learnly/`, proxied via `withEve` in `next.config.ts`) | eve 1.3.0 |
+| Unit/component tests | Vitest + jsdom + Testing Library + jest-dom; `convex-test` + `@edge-runtime/vm` for Convex | Vitest 5.1 |
 | End-to-end tests | Playwright (Chromium) against `next build && next start` | 1.65 |
 | Lint | ESLint 9 with `eslint-config-next` | — |
 | Package manager | npm | — |
@@ -51,7 +82,8 @@ UI SDK components can render from server components (their modules already decla
 | Authentication | [Clerk](https://clerk.com/docs) | Sign-in/up, users, organizations, roles |
 | Backend & database | [Convex](https://docs.convex.dev) | Schema, queries/mutations/actions, realtime sync, file storage, crons |
 | Hosting | [Vercel](https://vercel.com/docs) | Builds from GitHub, preview and production deployments, CDN, Vercel Functions (server rendering, route handlers) |
-| Video | [Mux](https://www.mux.com/docs) | Lesson video upload, encoding, streaming playback, captions, viewing analytics (dev tooling only so far; not used by the app yet) |
+| Video | [Mux](https://www.mux.com/docs) | Lesson video: direct uploads from the admin panel, encoding, streaming playback in the lesson player |
+| AI agents | [eve](https://github.com/vercel/eve) | Durable backend AI agents (`agents/learnly/` -> `/eve/learnly/v1/*`) via Vercel AI Gateway and Workflow |
 | UI behaviors | [UI SDK](https://ui-sdk.dev/docs) (beta) | Accessible behaviors (focus, keyboard, selection, popups, drag and drop, ARIA) via `@ui-sdk/core` + framework adapter |
 
 Clerk is the only auth provider; Convex validates Clerk-issued session tokens (see Clerk ↔ Convex auth). Convex Auth is intentionally not used.
@@ -63,7 +95,7 @@ Follows Clerk's [Convex integration guide](https://clerk.com/docs/guides/develop
 1. **Clerk:** the Convex integration is activated for the instance (Dashboard → [Integrations → Convex](https://dashboard.clerk.com/apps/setup/convex)). It adds `aud: "convex"` to every session token. Tokens are RS256, issued by the Frontend API URL, and expire after 60 seconds; the Clerk SDK refreshes them.
 2. **Convex:** `convex/auth.config.ts` trusts one provider: `domain` is `CLERK_FRONTEND_API_URL` from the deployment env, and `applicationID: "convex"` must equal the token's `aud`. Convex fetches the signing keys from `<domain>/.well-known/jwks.json`.
 3. **Inside Convex functions:** `ctx.auth.getUserIdentity()` returns `null` for anonymous calls. For a signed-in user it returns `subject` (the Clerk user ID, `user_…`), `issuer` and `tokenIdentifier` (`<issuer>|<subject>`). An invalid or expired token fails the call with `Unauthenticated`.
-4. **Next.js (not wired yet):** `<ClerkProvider>` wraps a `"use client"` `ConvexProviderWithClerk` (`convex/react-clerk`) that receives `useAuth` from `@clerk/nextjs`. Components read the auth state with `useConvexAuth()` or `<Authenticated>`/`<Unauthenticated>` from `convex/react`, not with Clerk's hooks. That way they wait until Convex has validated the token.
+4. **Next.js:** `<ClerkProvider>` wraps a `"use client"` `ConvexProviderWithClerk` (`convex/react-clerk`) that receives `useAuth` from `@clerk/nextjs`. Components read the auth state with `useConvexAuth()` or `<Authenticated>`/`<Unauthenticated>` from `convex/react`, not with Clerk's hooks. That way they wait until Convex has validated the token.
 
 Verified on 2026-11-21 against the dev deployment. A throwaway Clerk test user got a session token with `aud: "convex"` and `iss: https://pro-giraffe-8779.clerk.accounts.dev`. A temporary Convex query called with that token returned the user's identity; without a token it returned `null`; with a tampered signature it was rejected. The test user and the query were deleted afterwards. `scripts/check-dev-tooling.sh --online` repeats the configuration part of this check.
 
@@ -154,10 +186,24 @@ Commits are authored as `gek007 <17905201+gek007@users.noreply.github.com>`, set
 .vercelignore                 Files `vercel deploy` must not upload
 AGENTS.md                     Agent instructions (Next.js block is managed by `next dev`)
 README.md                     Quick start: install, dev, deploy and check commands
+agents/                       eve agent workspace (each subfolder is a named agent)
+  learnly/
+    agent/
+      agent.ts                Learnly model config (`openai/gpt-6-luna-fast`, `defaultTools: false`)
+      instructions.md         Learnly system prompt and AI disclosure
+      channels/eve.ts         HTTP channel auth: Clerk session token, Pro or admin only (`lib/clerk-auth.ts`)
+      lib/                    Clerk verification, viewer context, Convex client helpers
+      tools/                  `list_courses`, `get_course_details`, `get_my_progress`, `get_lesson`, `show_quiz` + tests
+    evals/                    Baseline eve evals (`evals.config.ts`, `smoke.eval.ts`)
 convex/                       Convex backend functions; convex/_generated/ is written by `npx convex dev`
   auth.config.ts              Trusts Clerk session tokens (see Clerk ↔ Convex auth)
-  auth.config.test.ts         Unit test for the auth config (never deployed: two dots in the name)
+  schema.ts                   Tables and indexes (see Data model)
+  lib/                        auth.ts (identity, isAdmin, isPro), access.ts (canAccessLesson), seedData.ts
+  courses.ts lessons.ts …     Public and student functions; admin.ts, mux.ts ("use node"), muxData.ts, http.ts for admin
+  *.test.ts                   convex-test unit tests (never deployed: two dots in the name)
 docs/ARCHITECTURE.md          This file
+docs/features/                Reference page per feature area (see Status)
+docs/superpowers/specs/       Design documents
 e2e/                          Playwright end-to-end tests
 eslint.config.mjs             ESLint config (ignores .agents/, convex/_generated/, test output)
 next.config.ts                Next.js config (Cache Components, partial prefetching, Tailwind loader)
@@ -165,15 +211,22 @@ package.json                  Scripts: dev, dev:convex, dev:all, build, start, l
 public/                       Static assets
 scripts/check-dev-tooling.sh  Verifies CLIs, MCP config, skills, .env.local, Vercel link; --online adds MCP, Clerk ↔ Convex, Mux sign-in and Vercel env checks
 src/
-  app/                        App Router routes only: layouts, pages, route handlers, globals.css
+  app/                        App Router routes only: /, /pricing, /courses/**, /dashboard, /admin/**, /learnly, /sign-in, /sign-up
+  proxy.ts                    clerkMiddleware; optimistic gate for /dashboard, /admin, /learnly (pages re-check)
   components/
     ui/                       App-styled UI SDK wrappers (one file per component, e.g. accordion.tsx)
-    layout/                   Page chrome: header, footer, sidebars, shells
+    layout/                   Site header and footer
+    providers/                ClerkClientProvider, ConvexClientProvider (stores the user on sign-in)
+    markdown/                 LessonMarkdown, CodeBlock, QuizBlock, parseQuiz
+    landing/ pricing/         Landing sections, hero animation, pricing plans, Pro plan ID lookup
+    course/ lesson/ video/    Catalog, course detail, lesson player, Mux player wrapper, dashboard
+    admin/                    Admin forms, lessons list, Mux video panel
+    tutor/                    Floating AI tutor widget and chat
   config/                     Static app config (site.ts: name, description)
   hooks/                      Shared client hooks (`use-*.ts`, "use client")
   lib/
     utils.ts                  cn() and mergeClassName() for class composition
-    courses/                  Course domain: types.ts, mock-data.ts, queries.ts
+    clerk-appearance.ts       Clerk theme matching globals.css
   test/setup.ts               Vitest setup: jest-dom, jsdom stubs for ui-sdk, strict mode, cleanup
 playwright.config.ts          E2E config; builds and starts the app on port 3100
 vitest.config.mts             Unit test config (jsdom, tsconfig paths)
@@ -193,26 +246,29 @@ vercel.json                   Vercel project config (function region)
 - **UI components:** pages import UI SDK parts through `@/components/ui/*`, which apply the app's Tailwind styles. Wrappers keep the UI SDK API (same part names and props), merge `className` with `mergeClassName` so string and state-function forms both work, and add only visual details (like the accordion chevron). Use UI SDK parts directly only for one-off cases.
 - **Tests:** colocated next to the file (`queries.test.ts` beside `queries.ts`). This applies in `convex/` too: Convex skips files with more than one dot in the name, so `*.test.ts` files are never deployed.
 
-## Data model (draft)
+## Data model
 
-Defined in `src/lib/courses/types.ts` and mirrored on Convex documents (`_id`, `_creationTime`, `Id<"table">` references), so it can become `convex/schema.ts` with little change. `src/lib/courses/mock-data.ts` holds sample documents; `src/lib/courses/queries.ts` exposes read functions with the names the Convex queries will have.
+Defined in `convex/schema.ts`; seed data in `convex/lib/seedData.ts` (`npx convex run seed:run`, idempotent by slug: 4 courses, 16 lessons). User identity in Convex is the Clerk user ID (`identity.subject`).
 
-| Table | Fields | Notes |
-| ----- | ------ | ----- |
-| `users` | `clerkId`, `name`, `role` (`student` \| `instructor` \| `admin`) | Synced from Clerk |
-| `courses` | `slug`, `title`, `summary`, `level`, `status` (`draft` \| `published` \| `archived`), `tags`, `instructorId → users` | Public pages show `published` only |
-| `lessons` | `courseId → courses`, `slug`, `title`, `summary`, `kind` (`video` \| `article` \| `quiz`), `order`, `durationMinutes` | `order` runs 1..n per course; slug unique per course |
+| Table | Fields | Indexes |
+| ----- | ------ | ------- |
+| `users` | `clerkId`, `name`, `email?`, `imageUrl?`, `plan?` | `by_clerkId` |
+| `courses` | `slug`, `title`, `summary`, `description` (markdown), `level`, `tier` (`free` \| `pro`), `status` (`draft` \| `published` \| `archived`), `tags`, `outcomes`, `coverImageUrl?`, `order` | `by_slug`, `by_status_order` |
+| `lessons` | `courseId`, `slug`, `title`, `summary`, `body` (markdown), `order`, `durationMinutes`, `isFreePreview`, `muxUploadId?`, `muxAssetId?`, `muxPlaybackId?`, `videoStatus?` | `by_course_order`, `by_course_slug`, `by_muxAssetId`, `by_muxUploadId` |
+| `enrollments` | `userId`, `courseId`, `enrolledAt` | `by_user`, `by_user_course`, `by_course` |
+| `lessonProgress` | `userId`, `courseId`, `lessonId`, `completedAt` | `by_user_course`, `by_user_lesson`, `by_course`, `by_lesson` |
 
-| Query | Returns |
-| ----- | ------- |
-| `listPublishedCourses()` | Published courses, newest first |
-| `getPublishedCourseBySlug(slug)` | A published course or `null` (drafts are hidden) |
-| `listLessons(courseId)` | The course's lessons by `order` |
-| `getLessonBySlug(courseId, slug)` | A lesson within that course or `null` |
-| `getUser(userId)` | A user or `null` |
-| `getCourseDurationMinutes(courseId)` | Sum of lesson durations |
+| Module | Functions |
+| ------ | --------- |
+| `courses` | `listPublished`, `getBySlug` (outline with `locked`, no bodies) |
+| `lessons` | `getForViewer` (body and playback ID only when unlocked; `prev`/`next`) |
+| `enrollments` | `enroll` (`PRO_REQUIRED` error), `isEnrolled`, `listMine` |
+| `progress` | `setComplete`, `forCourse` |
+| `users`, `viewer` | `store` (upsert on sign-in), `get` (`signedIn`, `isAdmin`, `isPro`, `user`) |
+| `admin`, `mux` | Admin-only CRUD, lesson reorder, cascading course delete, Mux direct upload, `syncLessonVideo`, `removeVideo` |
+| `http` | `POST /mux/webhook` (signature-verified, fails closed without `MUX_WEBHOOK_SECRET`) |
 
-Enrollments and lesson progress are not modeled yet; they arrive with Clerk + Convex. Video lessons will reference Mux assets once Mux is integrated.
+Lesson markdown supports GFM, highlighted code blocks with a copy button, and quizzes as fenced `quiz` blocks with a JSON body (`{ "question", "options", "answer", "explanation" }`). Markdown headings render one level down (the page owns the `<h1>`), and the lesson player drops a leading heading that repeats the lesson title.
 
 ## Testing
 
@@ -220,8 +276,10 @@ Enrollments and lesson progress are not modeled yet; they arrive with Clerk + Co
 | ------- | ------------ |
 | `npm run typecheck` | `next typegen` (route types such as `LayoutProps`) then `tsc --noEmit` |
 | `npm run lint` | ESLint |
-| `npm test` | Vitest once (`src/**/*.test.{ts,tsx}` and `convex/**/*.test.ts`; 24 tests in 5 files); `npm run test:watch` for watch mode |
-| `npm run test:e2e` | Playwright; builds and starts a production server on `PORT` (default 3100) |
+| `npm test` | Vitest once (`src/**/*.test.{ts,tsx}`, `convex/**/*.test.ts`, `agents/**/*.test.ts`; 148 tests in 31 files); `npm run test:watch` for watch mode |
+| `npm run test:e2e` | Playwright; builds Learnly and Next.js and starts a production server on `PORT` (default 3100); 21 tests, signed-out flows only. Outside CI it reuses a server already listening on that port, so stop any `next start` there first or you test a stale build |
+| `npm run info:learnly` | Inspects eve discovery, tools, and diagnostics for `agents/learnly/` |
+| `npm run eval:learnly` | Runs `agents/learnly/evals/` against a local Learnly server (needs live model credentials) |
 | `scripts/check-dev-tooling.sh [--online]` | Dev tooling and service configuration (see Repository layout) |
 
 Conventions:
@@ -262,7 +320,7 @@ Conventions:
 - **Mux** (`muxinc/skills`, 1): `mux-video` — finds the current Mux docs page for a topic (APIs, uploads, playback, live, Data, Robots) and answers from it. It recommends Video.js 10 for new web players; Mux Player for web is in maintenance mode.
 - **UI SDK** (`vercel-labs/ui`, 1): `ui-sdk` — composing UI SDK components, building custom behaviors on `@ui-sdk/core`, agent bridge/WebMCP, and keyboard/focus/ARIA testing. UI SDK has no dev MCP server or CLI.
 - **Web platform** (`GoogleChrome/modern-web-guidance`, 1): `modern-web-guidance` — current HTML, CSS and browser-API practices (dialogs, popovers, forms, accessibility, Core Web Vitals, security). It searches its guides with `npx -y modern-web-guidance@latest search "<query>"` (an npm package published by the Chrome team) and retrieves the matching ones. Interactive components still come from UI SDK; this skill guides the HTML, CSS and browser APIs around them. The `chrome-extensions` skill from the same repository is not installed.
-- **AI agents** (`vercel/eve`, 1): `eve` — for building durable backend AI agents with the eve framework (instructions, tools, connections, channels, sandboxes, subagents, schedules, evals). The skill only points to the docs bundled in the `eve` npm package (`node_modules/eve/docs/`), which isn't installed; nothing in the app uses eve yet.
+- **AI agents** (`vercel/eve`, 1): `eve` — for building durable backend AI agents with the eve framework (instructions, tools, connections, channels, sandboxes, subagents, schedules, evals). Full version-matched docs live in `node_modules/eve/docs/` (`README.md`).
 
 UI SDK's own docs for the installed version are in `node_modules/@ui-sdk/react/docs/` (start at `llms.txt`).
 

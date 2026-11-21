@@ -2,11 +2,18 @@
   "name": "llm-platform",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "26.x"
+  },
   "scripts": {
     "dev": "next dev",
     "dev:convex": "convex dev",
+    "dev:learnly": "eve dev --agent learnly",
     "dev:all": "concurrently --kill-others --names next,convex --prefix-colors blue,magenta \"npm:dev\" \"npm:dev:convex\"",
     "build": "next build",
+    "build:learnly": "cd agents/learnly && npx eve build",
+    "info:learnly": "eve info --agent learnly",
+    "eval:learnly": "eve eval --agent learnly",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
@@ -15,14 +22,26 @@
     "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.10.7",
+    "@mux/mux-node": "^15.5.0",
+    "@mux/mux-player-react": "^3.14.1",
+    "@mux/mux-uploader-react": "^1.6.1",
     "@ui-sdk/core": "0.1.0-beta.13",
     "@ui-sdk/react": "0.1.0-beta.13",
+    "ai": "^7.0.179",
     "convex": "^1.51.0",
+    "eve": "^1.3.0",
+    "motion": "^14.14.0",
     "next": "16.4.6",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
     "@playwright/test": "^1.65.1",
     "@tailwindcss/turbopack": "4.3.3",
     "@testing-library/dom": "^10.4.2",
@@ -34,6 +53,7 @@
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.3.0",
     "concurrently": "^10.0.7",
+    "convex-test": "^0.0.73",
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
     "jsdom": "^31.0.1",

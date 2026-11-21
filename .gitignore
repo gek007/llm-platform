@@ -1,5 +1,6 @@
 # dependencies
 /node_modules
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -39,6 +40,14 @@ yarn-error.log*
 
 # vercel
 .vercel
+
+# eve
+.eve/
+.output/
+.workflow-data/
+agents/*/.eve/
+agents/*/.output/
+agents/*/.workflow-data/
 
 # typescript
 *.tsbuildinfo

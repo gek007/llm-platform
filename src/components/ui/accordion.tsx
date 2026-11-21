@@ -12,7 +12,7 @@ function Accordion({ className, ...props }: ComponentProps<typeof AccordionRoot>
   return (
     <AccordionRoot
       className={mergeClassName(
-        "divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800",
+        "divide-y divide-line rounded-lg border border-line",
         className,
       )}
       {...props}
@@ -28,7 +28,7 @@ function AccordionTrigger({
   return (
     <AccordionTriggerPart
       className={mergeClassName(
-        "group flex w-full items-center justify-between gap-4 px-4 py-3 text-left font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 data-disabled:text-zinc-500 dark:focus-visible:outline-zinc-100",
+        "group flex w-full items-center justify-between gap-4 px-4 py-3 text-left font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent data-disabled:text-subtle",
         className,
       )}
       {...props}
@@ -65,7 +65,7 @@ function Chevron() {
 function AccordionPanel({ className, ...props }: ComponentProps<typeof AccordionPanelPart>) {
   return (
     <AccordionPanelPart
-      className={mergeClassName("px-4 pb-4 text-zinc-600 dark:text-zinc-400", className)}
+      className={mergeClassName("px-4 pb-4 text-muted", className)}
       {...props}
     />
   );

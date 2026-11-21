@@ -7,7 +7,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
-    include: ["src/**/*.test.{ts,tsx}", "convex/**/*.test.ts"],
+    include: ["src/**/*.test.{ts,tsx}", "convex/**/*.test.ts", "agents/**/*.test.ts"],
     css: false,
   },
 });

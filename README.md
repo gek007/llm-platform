@@ -1,3 +1,5 @@
+https://www.youtube.com/watch?v=rEGCDAeggAE&t=14556s
+
 # LMS Platform
 
 Learning management system built with Next.js, Clerk, Convex, Vercel and UI SDK.

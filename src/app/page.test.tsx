@@ -1,73 +1,46 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { createAgent } from "@ui-sdk/react/agent";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+
+// The catalog is an async server component (Convex fetch), covered in e2e/landing.spec.ts.
+vi.mock("@/components/landing/course-catalog", () => ({
+  CourseCatalog: () => <p>catalog</p>,
+  CourseCatalogSkeleton: () => <p>loading catalog</p>,
+}));
+
 import Home from "./page";
 
-const sections = ["Authentication", "Backend", "Hosting", "Interface"];
+class FakeIntersectionObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() {
+    return [];
+  }
+}
+vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
 
 describe("Home page", () => {
-  test("shows the platform name and its stack", () => {
+  test("has one h1 and the landing sections in order", () => {
     render(<Home />);
 
-    expect(
-      screen.getByRole("heading", { level: 1, name: "LMS Platform" }),
-    ).toBeInTheDocument();
-    for (const name of sections) {
-      expect(screen.getByRole("button", { name })).toHaveAttribute(
-        "aria-expanded",
-        "false",
-      );
-    }
-    expect(screen.queryByRole("region")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("knows where you are");
+
+    const h2 = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(h2).toEqual([
+      "Pick a path and start today",
+      "Every course, built the same careful way",
+      expect.stringContaining("Taught by"),
+      "Start free. Go Pro when you are ready.",
+      expect.stringContaining("Your next skill"),
+    ]);
   });
 
-  test("opens one stack section at a time from the keyboard", async () => {
-    const user = userEvent.setup();
+  test("links to courses and pricing", () => {
     render(<Home />);
-
-    const auth = screen.getByRole("button", { name: "Authentication" });
-    const backend = screen.getByRole("button", { name: "Backend" });
-
-    await user.tab();
-    expect(auth).toHaveFocus();
-    await user.keyboard(" ");
-    expect(auth).toHaveAttribute("aria-expanded", "true");
-    expect(
-      screen.getByRole("region", { name: "Authentication" }),
-    ).toHaveTextContent("Clerk");
-
-    await user.tab();
-    expect(backend).toHaveFocus();
-    await user.keyboard("{Enter}");
-    expect(backend).toHaveAttribute("aria-expanded", "true");
-    expect(auth).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByRole("region", { name: "Backend" })).toHaveTextContent(
-      "Convex",
-    );
-
-    await user.keyboard("{Enter}");
-    expect(backend).toHaveAttribute("aria-expanded", "false");
-  });
-
-  test("an agent can find and open every stack section", async () => {
-    const agent = createAgent();
-    render(<Home />);
-
-    const components = agent
-      .snapshot()
-      .filter((entry) => !entry.offPage && entry.component !== "more");
-    for (const entry of components) {
-      expect(entry.label, `${entry.component} ${entry.ref} has no name`).toBeTruthy();
-    }
-    expect(components.map((entry) => entry.label)).toContain("Platform stack");
-
-    const result = await agent.act({
-      steps: [{ ref: "Platform stack", action: "open", args: ["Hosting"] }],
-    });
-    expect(result.ok, result.error?.message).toBe(true);
-    expect(screen.getByRole("region", { name: "Hosting" })).toHaveTextContent(
-      "Vercel",
-    );
+    expect(screen.getAllByRole("link", { name: "Browse courses" })[0]).toHaveAttribute("href", "/courses");
+    expect(screen.getByRole("link", { name: "See pricing" })).toHaveAttribute("href", "/pricing");
+    expect(screen.getByRole("link", { name: "Compare plans" })).toHaveAttribute("href", "/pricing");
+    expect(screen.getByRole("link", { name: "Get started free" })).toHaveAttribute("href", "/sign-up");
   });
 });
