@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "clerk": {
+      "url": "https://mcp.clerk.com/mcp"
+    },
+    "convex": {
+      "command": "npx",
+      "args": ["-y", "convex@latest", "mcp", "start", "--project-dir", "${workspaceFolder}"]
+    },
+    "hostinger": {
+      "url": "https://mcp.hostinger.com"
+    }
+  }
+}
