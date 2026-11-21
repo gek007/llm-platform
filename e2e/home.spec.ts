@@ -40,7 +40,7 @@ test("stack sections open with the keyboard and the mouse", async ({ page }) => 
   await expect(hosting).toHaveAttribute("aria-expanded", "true");
   await expect(auth).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByRole("region", { name: "Hosting" })).toContainText(
-    "Hostinger",
+    "Vercel",
   );
   await expect(page.getByRole("region", { name: "Authentication" })).toHaveCount(0);
 });

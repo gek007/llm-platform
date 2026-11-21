@@ -1,20 +1,6 @@
 {
   "version": 2,
   "skills": {
-    "audit-hosting": {
-      "source": "hostinger/api-mcp-server",
-      "commit": "d43b171b58762112dfe30153f03be75cb0de9eaf",
-      "sourceType": "github",
-      "skillPath": "skills/audit-hosting/SKILL.md",
-      "computedHash": "c164a1b52912fa1fd0b1f02efd0c97d43862bd33e9b943b8681ffcc9ad1b6fd6"
-    },
-    "audit-vps": {
-      "source": "hostinger/api-mcp-server",
-      "commit": "d43b171b58762112dfe30153f03be75cb0de9eaf",
-      "sourceType": "github",
-      "skillPath": "skills/audit-vps/SKILL.md",
-      "computedHash": "8a7f0bc337422d9c456e53bbd2b5d555351eb78a4785866403455fdba3c58911"
-    },
     "clerk": {
       "source": "clerk/skills",
       "commit": "78092a74297dac3fb2c64efab3dbe86b581eaea8",
@@ -133,13 +119,6 @@
       "sourceType": "github",
       "skillPath": "skills/clerk-webhooks/SKILL.md",
       "computedHash": "b50cef6155462607f633da76c99f761a80eeae52819c6ba0b4ce0293561f165f"
-    },
-    "connect-domain": {
-      "source": "hostinger/api-mcp-server",
-      "commit": "d43b171b58762112dfe30153f03be75cb0de9eaf",
-      "sourceType": "github",
-      "skillPath": "skills/connect-domain/SKILL.md",
-      "computedHash": "5b11c8af7b4758391f0c8dd4476693afd11b6e5900c1018a90c24ddbc05a2d70"
     },
     "convex": {
       "source": "convex/agent-skills",
@@ -358,61 +337,12 @@
       "skillPath": "skills/convex-verify/SKILL.md",
       "computedHash": "5bb7da26480ce5a94475c81b9ec85e6935757c959873ab62dc9a0a67f13d1b2a"
     },
-    "deploy-to-hosting": {
-      "source": "hostinger/api-mcp-server",
-      "commit": "d43b171b58762112dfe30153f03be75cb0de9eaf",
+    "deploy-to-vercel": {
+      "source": "vercel-labs/agent-skills",
+      "commit": "5a37a6329fbad3666c3207392a6a7c0110e92efb",
       "sourceType": "github",
-      "skillPath": "skills/deploy-to-hosting/SKILL.md",
-      "computedHash": "ad848ed42ad5d1147d380c19279465fb64e1cff9a60aa8f18abce1c65db2e378"
-    },
-    "deploy-to-vps": {
-      "source": "hostinger/api-mcp-server",
-      "commit": "d43b171b58762112dfe30153f03be75cb0de9eaf",
-      "sourceType": "github",
-      "skillPath": "skills/deploy-to-vps/SKILL.md",
-      "computedHash": "32be614d437af230c83321a49377b296a2b076a2604e2d0655832e2954a5959a"
-    },
-    "hostinger-headless": {
-      "source": "hostinger/api-mcp-server",
-      "commit": "d43b171b58762112dfe30153f03be75cb0de9eaf",
-      "sourceType": "github",
-      "skillPath": "skills/headless/SKILL.md",
-      "computedHash": "fc06813fd856afb1e5c6c9b5754b932510de6563a5865aa1bfd6dfd7845cc98b"
-    },
-    "migrate-to-hosting": {
-      "source": "hostinger/api-mcp-server",
-      "commit": "d43b171b58762112dfe30153f03be75cb0de9eaf",
-      "sourceType": "github",
-      "skillPath": "skills/migrate-to-hosting/SKILL.md",
-      "computedHash": "81504c93313e248fe8495ee66b5a05c35c6f183686222267f261efedb0e9e5af"
-    },
-    "provision-vps": {
-      "source": "hostinger/api-mcp-server",
-      "commit": "d43b171b58762112dfe30153f03be75cb0de9eaf",
-      "sourceType": "github",
-      "skillPath": "skills/provision-vps/SKILL.md",
-      "computedHash": "c9df75f7cbc0a2507af4358205f9ca74e34c09f24b19a5aa9ce684ce5bc6f1ee"
-    },
-    "secure-vps": {
-      "source": "hostinger/api-mcp-server",
-      "commit": "d43b171b58762112dfe30153f03be75cb0de9eaf",
-      "sourceType": "github",
-      "skillPath": "skills/secure-vps/SKILL.md",
-      "computedHash": "f29914e060606ef48cdcfa30482dbdeaca35ce2760374fb22e877d2768f42c83"
-    },
-    "troubleshoot-vps": {
-      "source": "hostinger/api-mcp-server",
-      "commit": "d43b171b58762112dfe30153f03be75cb0de9eaf",
-      "sourceType": "github",
-      "skillPath": "skills/troubleshoot-vps/SKILL.md",
-      "computedHash": "d8dfb5095791a45f0dae0657cb47c050c34632c9d02c1ecb915837f72d1ae268"
-    },
-    "troubleshoot-website": {
-      "source": "hostinger/api-mcp-server",
-      "commit": "d43b171b58762112dfe30153f03be75cb0de9eaf",
-      "sourceType": "github",
-      "skillPath": "skills/troubleshoot-website/SKILL.md",
-      "computedHash": "b0352f75ebee0c7f11ceef4032214e700c08ba3cefb35a5e6f96ba86928f5e5a"
+      "skillPath": "skills/deploy-to-vercel/SKILL.md",
+      "computedHash": "66b99dfa063b1c405155e9bffd99c04ca3e312e81b168d540b757bb194b7400a"
     },
     "ui-sdk": {
       "source": "vercel-labs/ui",
@@ -420,6 +350,13 @@
       "sourceType": "github",
       "skillPath": "packages/core/skills/ui-sdk/SKILL.md",
       "computedHash": "9a60caf01da3d47beedf627bf1505d922dccc93b04f294c6aa64edf01c46b3ba"
+    },
+    "vercel-cli": {
+      "source": "vercel/vercel",
+      "commit": "155eacfa16840e68ae54bc50ee72fc8e16733857",
+      "sourceType": "github",
+      "skillPath": "skills/vercel-cli/SKILL.md",
+      "computedHash": "2adc0fa8dffa6b9867e47923aaa892727d6e8f073c6a7f87aa2ae59089dc422d"
     }
   }
 }

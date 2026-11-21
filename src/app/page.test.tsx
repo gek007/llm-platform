@@ -67,7 +67,7 @@ describe("Home page", () => {
     });
     expect(result.ok, result.error?.message).toBe(true);
     expect(screen.getByRole("region", { name: "Hosting" })).toHaveTextContent(
-      "Hostinger",
+      "Vercel",
     );
   });
 });

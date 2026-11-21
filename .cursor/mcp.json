@@ -7,8 +7,8 @@
       "command": "npx",
       "args": ["-y", "convex@latest", "mcp", "start", "--project-dir", "${workspaceFolder}"]
     },
-    "hostinger": {
-      "url": "https://mcp.hostinger.com"
+    "vercel": {
+      "url": "https://mcp.vercel.com"
     }
   }
 }

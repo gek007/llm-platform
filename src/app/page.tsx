@@ -24,8 +24,8 @@ const stack = [
   {
     value: "hosting",
     label: "Hosting",
-    service: "Hostinger",
-    description: "Web hosting, domain and DNS.",
+    service: "Vercel",
+    description: "Builds, preview and production deployments, and the CDN.",
   },
   {
     value: "interface",

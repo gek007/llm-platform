@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Verifies the local AI/dev tooling for Clerk, Convex, Hostinger and UI SDK.
+# Verifies the local AI/dev tooling for Clerk, Convex, Vercel and UI SDK.
 # Usage: scripts/check-dev-tooling.sh [--online]
-#   --online  also probe the MCP servers over the network
+#   --online  also probe the MCP servers and the Clerk, Convex and Vercel setup over the network
 
 set -uo pipefail
 
@@ -16,11 +16,11 @@ check() { local name="$1"; shift; if "$@" >/dev/null 2>&1; then pass "$name"; el
 echo "CLIs"
 check "node >= 20" node -e 'process.exit(+process.versions.node.split(".")[0] >= 20 ? 0 : 1)'
 check "clerk CLI" clerk --version
-check "hostinger CLI" hostinger version
+check "vercel CLI" vercel --version
 check "convex CLI (npx)" npx -y convex@latest --version
 
 echo "MCP config (.cursor/mcp.json)"
-for server in clerk convex hostinger; do
+for server in clerk convex vercel; do
   check "server '$server' configured" node -e "
     const c = require('./.cursor/mcp.json');
     process.exit(c.mcpServers && c.mcpServers['$server'] ? 0 : 1);"
@@ -35,7 +35,7 @@ check "every locked skill is installed" node -e "
 for prefix in clerk convex; do
   check "$prefix skills present" test -f ".agents/skills/$prefix/SKILL.md"
 done
-check "hostinger skills present" test -f ".agents/skills/deploy-to-hosting/SKILL.md"
+check "vercel skills present" test -f ".agents/skills/deploy-to-vercel/SKILL.md" -a -f ".agents/skills/vercel-cli/SKILL.md"
 check "ui-sdk skill present" test -f ".agents/skills/ui-sdk/SKILL.md"
 
 echo "Environment (.env.local has every key in .env.example)"
@@ -46,6 +46,8 @@ check ".env.local complete" node -e "
   const local = Object.fromEntries(keys('.env.local').map(m => [m[1], m[2].trim()]));
   const missing = keys('.env.example').map(m => m[1]).filter(k => !local[k]);
   if (missing.length) { console.error(missing.join(', ')); process.exit(1); }"
+check "directory linked to the Vercel project (vercel link)" node -e "
+  process.exit(require('./.vercel/project.json').projectName === 'llm-platform' ? 0 : 1);"
 
 if [[ "${1:-}" == "--online" ]]; then
   echo "MCP servers (network)"
@@ -58,7 +60,7 @@ if [[ "${1:-}" == "--online" ]]; then
     [[ "$code" == "200" || "$code" == "401" ]]
   }
   check "clerk MCP reachable" probe https://mcp.clerk.com/mcp
-  check "hostinger MCP reachable" probe https://mcp.hostinger.com
+  check "vercel MCP reachable" probe https://mcp.vercel.com
   check "convex MCP starts and lists tools" bash -c "
     (printf '%s\n' '$init' '{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}' \
        '{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}'; sleep 6) \
@@ -75,6 +77,21 @@ if [[ "${1:-}" == "--online" ]]; then
     process.exit('https://' + host === '$fapi' ? 0 : 1);"
   check "Clerk issuer matches CLERK_FRONTEND_API_URL" bash -c "
     curl -sf '$fapi/.well-known/openid-configuration' | grep -q '\"issuer\":\"$fapi\"'"
+
+  echo "Vercel project (network)"
+  # CONVEX_DEPLOYMENT only drives the local Convex CLI, so Vercel does not need it.
+  check "Vercel Preview and Development have every app key from .env.example" bash -c "
+    vercel env ls --format json 2>/dev/null | node -e \"
+      const fs = require('fs');
+      const envs = JSON.parse(fs.readFileSync(0, 'utf8')).envs;
+      const wanted = fs.readFileSync('.env.example', 'utf8').split('\n')
+        .map(l => l.match(/^([A-Z0-9_]+)=/)).filter(Boolean).map(m => m[1])
+        .filter(k => k !== 'CONVEX_DEPLOYMENT');
+      const missing = [];
+      for (const target of ['preview', 'development'])
+        for (const key of wanted)
+          if (!envs.some(e => e.key === key && e.target.includes(target))) missing.push(key + ' [' + target + ']');
+      if (missing.length) { console.error(missing.join(', ')); process.exit(1); }\""
 fi
 
 echo
