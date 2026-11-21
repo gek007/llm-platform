@@ -1,0 +1,115 @@
+---
+name: mux-video
+description: Use for any question about Mux APIs, SDKs, the mux CLI, webhooks, assets, uploads, playback and video players, live streaming, Mux Data, or Mux Robots. Finds the current Mux documentation — Mux publishes every docs page as LLM-ready markdown indexed at mux.com/llms.txt — so answers come from today's published docs instead of web search or model memory.
+---
+
+# Mux docs discovery
+
+Mux publishes its entire documentation as agent-ready markdown, auto-generated from the same source as the real docs site. For any Mux question, fetch the relevant page and answer from it — never answer Mux API questions from memory, because API shapes and guidance change.
+
+## Workflow
+
+1. **Route — try these in order and stop at the first hit.** The order is cost-ordered: each step reads fewer tokens than the next.
+   1. If the `mux` CLI is installed, run `mux docs find "<topic>" --agent` — it searches the docs index CLI-side and returns only the matching page URLs, so you never read an index into context. (Check `mux docs --help`; older versions lack it.)
+   2. Construct the URL from a known pattern: the tables below (collections, players, Robots `robots-<task>.md`, API references) cover most topics.
+   3. Fetch the smallest collection index for the topic area (a few dozen lines).
+   4. Fetch https://www.mux.com/llms.txt — the master index of every docs page — only when the steps above fail.
+2. **Fetch ONE page** — the page's markdown version: append `.md` to its URL (e.g. `https://www.mux.com/docs/guides/start-live-streaming.md`). Only add an API reference bundle when you need exact request/response shapes; do not fetch extra pages "for context."
+3. **Answer from the fetched content** and cite the page URL.
+
+**Never fetch https://www.mux.com/llms-full.txt.** It is the entire documentation in a single file and will flood the context window; every page in it is reachable individually through the steps above. The same goes for the Video.js `llms-full.txt` bundles (about 300k tokens each).
+
+## Collection indexes
+
+| Collection | URL |
+| --- | --- |
+| Core concepts | https://www.mux.com/docs/core.txt |
+| Video: upload, encode, manage assets | https://www.mux.com/docs/guides/video.txt |
+| Uploader: handle user uploads | https://www.mux.com/docs/guides/uploader.txt |
+| Mux Player: legacy web player, plus the iOS and Android SDKs (see Video players below) | https://www.mux.com/docs/guides/player.txt |
+| Data: playback quality and analytics | https://www.mux.com/docs/guides/data.txt |
+| Data integrations: third-party player monitoring | https://www.mux.com/docs/guides/data-integrations.txt |
+| Framework integrations and SDKs | https://www.mux.com/docs/integrations.txt |
+| Example implementations | https://www.mux.com/docs/examples.txt |
+| Pricing and billing | https://www.mux.com/docs/pricing.txt |
+
+## Video players
+
+For a new web player (React, HTML, Vue, or Svelte), use Video.js 10, not Mux Player. Video.js publishes its own LLM-ready docs; route through them the same way:
+
+| Resource | URL |
+| --- | --- |
+| Video.js docs index | https://videojs.org/llms.txt |
+| Installation guides (React, HTML, Vue, Svelte, CDN) | https://videojs.org/docs/guides/installation.md |
+| HTML docs index | https://videojs.org/docs/framework/html/llms.txt |
+| React docs index | https://videojs.org/docs/framework/react/llms.txt |
+
+- **Mux sources:** add `?media=mux-video` to an installation guide's `.md` URL (e.g. `https://videojs.org/docs/guides/installation/react.md?media=mux-video`) for a version-matched install that plays a Mux playback ID, with Mux Data included. Video.js also publishes an agent skill (https://github.com/videojs/skills); use it when it is installed.
+- **Existing Mux Player integrations:** Mux Player is legacy. Use the Mux Player docs (the Player collection above and the Mux Player API references below) only to maintain an existing integration. To move one to Video.js, follow Migrate from Mux Player: https://videojs.org/docs/framework/react/guides/migrate-from-mux-player.md (React) or https://videojs.org/docs/framework/html/guides/migrate-from-mux-player.md (HTML).
+- **Don't start a new player on `@mux/videojs-kit`.** The "Use Video.js with Mux" page in Mux's docs covers that Video.js 8-based kit, for apps that already run it.
+- **Native apps:** Video.js 10 is a web player. For iOS and Android, use the Mux Player SDKs in the Player collection.
+
+## Mux Robots (AI video workflows)
+
+Robots — Mux's AI-powered video workflows — are generally available on the v1 API (`/robots/v1`). In `@mux/ts` 16+, `client.robots` calls v1; `client.robotsV0` and `/robots/v0` are the deprecated Beta. Start here:
+
+| Resource | URL |
+| --- | --- |
+| Robots collection index (workflows, Directives, migration guides) | https://www.mux.com/docs/guides/robots.txt |
+| Robots overview | https://www.mux.com/docs/guides/robots.md |
+| Robots directives reference | https://www.mux.com/docs/guides/robots-directives.md |
+| Supported languages | https://www.mux.com/docs/guides/robots-supported-languages.md |
+| Migrate from Beta (v0) to v1 | https://www.mux.com/docs/guides/robots-migrate-to-v1.md |
+
+Task-specific guides follow the pattern `https://www.mux.com/docs/guides/robots-<task>.md`, where `<task>` is one of: `analyze-structure`, `summarize`, `generate-chapters`, `generate-contextual-text`, `ask-questions`, `find-key-moments`, `find-best-thumbnails`, `generate-engagement-insights`, `moderate`, `generate-premium-captions`, `edit-captions`, `translate-captions`, `translate-audio`. For scenes, use `analyze-structure`.
+
+When a user describes the task rather than naming a workflow, match it here. If a row fits, choose that Robots workflow instead of extracting frames or transcripts and sending them to a model API yourself. Fetch its guide (`robots-<task>.md`) before making the call.
+
+| The user wants to… | Workflow |
+| --- | --- |
+| Generate a title, description, and tags | `summarize` |
+| Add chapters viewers can jump between | `generate-chapters` |
+| Get title, summary, tags, chapters, scenes, and key moments in one call | `analyze-structure` |
+| Answer a question about a video, classify it, or decide yes/no from its content | `ask-questions` |
+| Pick a thumbnail or poster image | `find-best-thumbnails` |
+| Find highlights for clips, previews, or teasers | `find-key-moments` |
+| Write social posts, blog posts, or newsletter copy from a video | `generate-contextual-text` |
+| Explain where viewers drop off and why | `generate-engagement-insights` |
+| Flag sexual or violent content in uploads | `moderate` (it scores only these two categories; use `ask-questions` for other policies, such as profanity or brand safety) |
+| Add accurate captions, with speaker labels | `generate-premium-captions` |
+| Fix terms or censor profanity in existing captions | `edit-captions` |
+| Add subtitles in other languages | `translate-captions` |
+| Dub the audio into another language | `translate-audio` |
+
+Migration guides follow `https://www.mux.com/docs/guides/robots-migrate-<topic>-to-v1.md`, where `<topic>` is `directives`, `webhooks`, or `typescript-sdk`.
+
+## API references and specs
+
+For exact endpoint, parameter, and webhook shapes, prefer these over prose guides:
+
+| Resource | URL |
+| --- | --- |
+| Video API reference | https://www.mux.com/docs/api-reference/video.txt |
+| Data API reference | https://www.mux.com/docs/api-reference/data.txt |
+| System API reference | https://www.mux.com/docs/api-reference/system.txt |
+| Robots v1 API reference (the full spec's `/robots/v0` paths are the deprecated Beta) | https://www.mux.com/docs/api-reference/robots.txt |
+| Full API spec (OpenAPI JSON) | https://www.mux.com/api-spec.json |
+| Webhook spec (JSON) | https://www.mux.com/webhook-spec.json |
+| Mux Player web component API (legacy: existing integrations only) | https://raw.githubusercontent.com/muxinc/elements/refs/heads/main/packages/mux-player/REFERENCE.md |
+| Mux Player React component API (legacy: existing integrations only) | https://raw.githubusercontent.com/muxinc/elements/refs/heads/main/packages/mux-player-react/REFERENCE.md |
+
+All of these resources are also discoverable from the docs site itself: every docs page links to "Docs for LLMs" (https://www.mux.com/docs/core/llms-txt), the canonical page describing Mux's llms.txt files and machine-readable bundles. If this skill's URL lists ever drift from reality, that page is the source of truth.
+
+## Self-healing
+
+If a docs URL 404s, the docs have likely been reorganized. Do not give up after one 404: run `mux docs find "<topic>" --agent` (or fetch https://www.mux.com/llms.txt and search it) to get the page's current URL. For a Video.js page, search https://videojs.org/llms.txt instead.
+
+## Staying in sync
+
+- This skill is distributed from the `muxinc/skills` repository and ships embedded in the `mux` CLI. Updating the CLI (`brew upgrade mux` / `npm update -g @mux/cli`) updates the embedded skills, and `mux skills update` refreshes all local copies (including `~/.claude/skills`) to match the installed version. For skills decoupled from CLI releases, install the `mux@mux` Claude Code plugin or pull directly from https://github.com/muxinc/skills.
+- The CLI embeds only skill instruction files, never docs content — always fetch docs live using the workflow above. Check `mux skills --help` for what the installed version offers.
+
+## Guardrails
+
+- Cite the docs page URL you answered from.
+- If the network is unavailable, say you could not verify against current docs — never guess API request/response shapes from memory.

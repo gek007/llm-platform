@@ -10,7 +10,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Project
 
-LMS platform: Next.js (App Router) + Clerk (auth) + Convex (backend) + Vercel (hosting) + UI SDK (components). Architecture, tooling and conventions live in `docs/ARCHITECTURE.md`; keep it up to date with every step.
+LMS platform: Next.js (App Router) + Clerk (auth) + Convex (backend) + Vercel (hosting) + Mux (video) + UI SDK (components). Architecture, tooling and conventions live in `docs/ARCHITECTURE.md`; keep it up to date with every step.
 
 ## UI SDK
 

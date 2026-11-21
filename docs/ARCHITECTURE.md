@@ -10,7 +10,8 @@ Living document. Update it whenever a step changes the stack, structure, or tool
 | 1 | Next.js app scaffold, UI SDK packages, Vitest + Playwright | Done, pending review |
 | 2 | Source folder structure, styled UI SDK wrappers, typed course mock data | Done, pending review |
 | 3 | Clerk ↔ Convex backend integration (Convex accepts Clerk session tokens) | Done, pending review |
-| 4 | Hosting on Vercel: project, Git deploys, env vars, region (replaces Hostinger) | Done, pending review |
+| 4 | Hosting on Vercel: project, Git deploys, env vars, region (replaces Hostinger) | Done |
+| 5 | Mux dev tooling: MCP server, CLI, `mux-video` skill | Done, pending review |
 
 The app is a placeholder home page, live at <https://llm-platform-xi.vercel.app>. Convex trusts Clerk tokens (see Clerk ↔ Convex auth), but the Next.js app has no Clerk or Convex providers yet; course data comes from typed mocks in `src/lib/courses/`.
 
@@ -42,6 +43,7 @@ UI SDK components can render from server components (their modules already decla
 | Authentication | [Clerk](https://clerk.com/docs) | Sign-in/up, users, organizations, roles |
 | Backend & database | [Convex](https://docs.convex.dev) | Schema, queries/mutations/actions, realtime sync, file storage, crons |
 | Hosting | [Vercel](https://vercel.com/docs) | Builds from GitHub, preview and production deployments, CDN, Vercel Functions (server rendering, route handlers) |
+| Video | [Mux](https://www.mux.com/docs) | Lesson video upload, encoding, streaming playback, captions, viewing analytics (dev tooling only so far; not used by the app yet) |
 | UI behaviors | [UI SDK](https://ui-sdk.dev/docs) (beta) | Accessible behaviors (focus, keyboard, selection, popups, drag and drop, ARIA) via `@ui-sdk/core` + framework adapter |
 
 Clerk is the only auth provider; Convex validates Clerk-issued session tokens (see Clerk ↔ Convex auth). Convex Auth is intentionally not used.
@@ -93,6 +95,7 @@ The app doesn't read any of these variables yet, so production builds work witho
 | -------- | --------- | --------- |
 | Clerk application | "LMS Platform" `app_3MQ6Ah3aicMxqGdRvLxQwJi2ljf` (development instance) | [dashboard.clerk.com](https://dashboard.clerk.com) |
 | Convex project | `kostya-shilkrot/llm-platform`: dev deployment `hallowed-iguana-534`, prod deployment `tremendous-firefly-113` (both eu-west-1; prod is empty and read-only to the MCP server) | [dashboard.convex.dev](https://dashboard.convex.dev/t/kostya-shilkrot/llm-platform) |
+| Mux environment | `LMS-Platform` (type development) in the `aicy` organization; empty so far. The Mux MCP and the `mux` CLI (OAuth, environment `aicy-lms-platform`) are both signed in to it | [dashboard.mux.com](https://dashboard.mux.com) |
 | Vercel project | `llm-platform` in "gek007's projects" (see Hosting on Vercel) | [vercel.com/gek007s-projects/llm-platform](https://vercel.com/gek007s-projects/llm-platform) |
 
 `.env.local` (git-ignored, mode 600):
@@ -104,6 +107,7 @@ The app doesn't read any of these variables yet, so production builds work witho
 | `CONVEX_DEPLOYMENT` | Convex CLI (`npx convex dev`, MCP server) | `npx convex dev` |
 | `NEXT_PUBLIC_CONVEX_URL` | `ConvexReactClient` / server fetches | `npx convex dev` |
 | `NEXT_PUBLIC_CONVEX_SITE_URL` | Convex HTTP actions (e.g. webhooks) | `npx convex dev` |
+| `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` | Local copy of the Mux access token kept on the Convex deployment (server only) | Mux Dashboard → Settings → Access Tokens |
 | `VERCEL_OIDC_TOKEN` | Vercel services called from local code (unused so far); expires after about 12 hours | `vercel link`, refreshed by `vercel env pull` |
 
 Convex deployment env vars (`npx convex env list`), read by Convex functions:
@@ -111,6 +115,7 @@ Convex deployment env vars (`npx convex env list`), read by Convex functions:
 | Key | Value |
 | --- | ----- |
 | `CLERK_FRONTEND_API_URL` | Clerk Frontend API URL of the dev instance (`https://pro-giraffe-8779.clerk.accounts.dev`), read by `convex/auth.config.ts`. Clerk's guide uses this name; Convex's older docs call it `CLERK_JWT_ISSUER_DOMAIN`. |
+| `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` | Mux access token for the `LMS-Platform` development environment (Video, Data, Robots and System, read and write), for server-side Mux calls from Convex actions. Not used by any function yet. The same pair is in `.env.local`; it never goes into `NEXT_PUBLIC_*` variables or Vercel unless a Next.js route handler calls Mux |
 
 Setting up a new machine: `clerk auth login && clerk link --app app_3MQ6Ah3aicMxqGdRvLxQwJi2ljf && clerk env pull --file .env.local`, then `npx convex dev` (select the existing `llm-platform` project), then `vercel login && vercel link --project llm-platform --scope gek007s-projects`. `scripts/check-dev-tooling.sh` fails if `.env.local` is missing a key listed in `.env.example` or the folder isn't linked to the Vercel project.
 
@@ -127,7 +132,7 @@ Production credentials (a Clerk production instance, a Convex prod deploy key) a
 
 ```
 .agents/skills/               Agent skills (installed by `npx skills`, pinned in skills-lock.json)
-.cursor/mcp.json              Project MCP servers: clerk, convex, vercel
+.cursor/mcp.json              Project MCP servers: clerk, convex, vercel, mux
 .env.example                  Every env key the app needs, without values (committed)
 .env.local                    Real dev values (git-ignored; see Environment)
 .vercel/                      Local link to the Vercel project, written by `vercel link` (git-ignored)
@@ -138,7 +143,7 @@ convex/                       Convex backend functions; convex/_generated/ is wr
 docs/ARCHITECTURE.md          This file
 e2e/                          Playwright end-to-end tests
 public/                       Static assets
-scripts/check-dev-tooling.sh  Verifies CLIs, MCP config, skills, .env.local, Vercel link; --online adds MCP, Clerk ↔ Convex and Vercel env checks
+scripts/check-dev-tooling.sh  Verifies CLIs, MCP config, skills, .env.local, Vercel link; --online adds MCP, Clerk ↔ Convex, Mux sign-in and Vercel env checks
 src/
   app/                        App Router routes only: layouts, pages, route handlers, globals.css
   components/
@@ -213,6 +218,7 @@ Conventions:
 | `clerk` | Remote HTTP `https://mcp.clerk.com/mcp` | OAuth in browser (Cursor → MCP → Authenticate) | Account tools (apps, users, orgs, domains) + SDK snippets |
 | `convex` | Local stdio `npx -y convex@latest mcp start --project-dir ${workspaceFolder}` | Uses Convex CLI login / `.env.local` deployment | Dev deployment only; production access is off by default and must stay off |
 | `vercel` | Remote HTTP `https://mcp.vercel.com` | OAuth in browser (Cursor shows "Needs login") | Docs search, projects, deployments, build logs, Web Analytics. Gets the same access as your Vercel account |
+| `mux` | Remote HTTP `https://mcp.mux.com` | OAuth in browser: sign in to dashboard.mux.com and pick one Mux environment | "Code Mode": two tools, `search_docs` and `execute` (TypeScript against `@mux/ts`, run in a Mux-hosted sandbox). Can do anything the chosen environment allows, deletes included; authorize the Development environment, not Production |
 
 ### CLIs
 
@@ -221,6 +227,7 @@ Conventions:
 | `clerk` | `npm i -g clerk` | `clerk auth login`; `clerk link` once the app exists |
 | `convex` | Project dependency (`npm i convex`), run via `npx convex` | `npx convex login` |
 | `vercel` | `brew install vercel` (or `npm i -g vercel`) | `vercel login`; `vercel link` once per machine |
+| `mux` | `brew tap muxinc/tap && brew install muxinc/tap/mux` (or `npm i -g @mux/cli`) | `mux login` (browser; stores credentials in `~/.config/mux/config.json`), or `MUX_TOKEN_ID`/`MUX_TOKEN_SECRET` |
 
 ### Skills (`.agents/skills/`)
 
@@ -229,7 +236,10 @@ Cursor loads these automatically; invoke manually with `/skill-name`.
 - **Clerk** (`clerk/skills`, 17): `clerk` router, `clerk-cli`, `clerk-setup`, `clerk-custom-ui`, `clerk-backend-api`, `clerk-orgs`, `clerk-billing`, `clerk-testing`, `clerk-webhooks`, `clerk-migrate`, and web-framework patterns (Next.js, React, React Router, TanStack, Astro, Vue, Nuxt). Native mobile and Chrome-extension skills are excluded.
 - **Convex** (`convex/agent-skills`, 31): all official skills except `convex-auth` (conflicts with Clerk) and `convex-improve-convex-plugin` (uploads session transcripts).
 - **Vercel** (2): `deploy-to-vercel` (`vercel-labs/agent-skills`; preview unless production is asked for explicitly, Git-push deploys only with approval) and `vercel-cli` (`vercel/vercel`; CLI reference for deployments, env vars, domains, logs).
+- **Mux** (`muxinc/skills`, 1): `mux-video` — finds the current Mux docs page for a topic (APIs, uploads, playback, live, Data, Robots) and answers from it. It recommends Video.js 10 for new web players; Mux Player for web is in maintenance mode.
 - **UI SDK** (`vercel-labs/ui`, 1): `ui-sdk` — composing UI SDK components, building custom behaviors on `@ui-sdk/core`, agent bridge/WebMCP, and keyboard/focus/ARIA testing. UI SDK has no dev MCP server or CLI.
+
+- **Web platform** (`GoogleChrome/modern-web-guidance`, 1): `modern-web-guidance` — current HTML, CSS and browser-API practices (dialogs, popovers, forms, accessibility, Core Web Vitals, security). It searches its guides with `npx -y modern-web-guidance@latest search "<query>"` (an npm package published by the Chrome team) and retrieves the matching ones. Interactive components still come from UI SDK; this skill guides the HTML, CSS and browser APIs around them. The `chrome-extensions` skill from the same repository is not installed.
 
 UI SDK's own docs for the installed version are in `node_modules/@ui-sdk/react/docs/` (start at `llms.txt`).
 
@@ -247,4 +257,5 @@ Once a Convex project exists, `npx convex ai-files install` adds Convex guidelin
 
 - Never commit secrets. `.env*` is git-ignored (except `.env.example`).
 - Convex MCP never runs with `--dangerously-enable-production-deployments`.
+- The Mux MCP and CLI act on whichever Mux environment they're signed in to; use the Development environment for agent work.
 - Vercel production deploys and production env vars, and Clerk production changes (domains, billing, production instances), require explicit human confirmation.

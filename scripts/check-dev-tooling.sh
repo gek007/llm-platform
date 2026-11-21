@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verifies the local AI/dev tooling for Clerk, Convex, Vercel and UI SDK.
+# Verifies the local AI/dev tooling for Clerk, Convex, Vercel, Mux and UI SDK.
 # Usage: scripts/check-dev-tooling.sh [--online]
 #   --online  also probe the MCP servers and the Clerk, Convex and Vercel setup over the network
 
@@ -17,10 +17,11 @@ echo "CLIs"
 check "node >= 20" node -e 'process.exit(+process.versions.node.split(".")[0] >= 20 ? 0 : 1)'
 check "clerk CLI" clerk --version
 check "vercel CLI" vercel --version
+check "mux CLI" mux --version
 check "convex CLI (npx)" npx -y convex@latest --version
 
 echo "MCP config (.cursor/mcp.json)"
-for server in clerk convex vercel; do
+for server in clerk convex vercel mux; do
   check "server '$server' configured" node -e "
     const c = require('./.cursor/mcp.json');
     process.exit(c.mcpServers && c.mcpServers['$server'] ? 0 : 1);"
@@ -36,7 +37,9 @@ for prefix in clerk convex; do
   check "$prefix skills present" test -f ".agents/skills/$prefix/SKILL.md"
 done
 check "vercel skills present" test -f ".agents/skills/deploy-to-vercel/SKILL.md" -a -f ".agents/skills/vercel-cli/SKILL.md"
+check "mux skill present" test -f ".agents/skills/mux-video/SKILL.md"
 check "ui-sdk skill present" test -f ".agents/skills/ui-sdk/SKILL.md"
+check "modern-web-guidance skill present" test -f ".agents/skills/modern-web-guidance/SKILL.md"
 
 echo "Environment (.env.local has every key in .env.example)"
 check ".env.local complete" node -e "
@@ -61,6 +64,7 @@ if [[ "${1:-}" == "--online" ]]; then
   }
   check "clerk MCP reachable" probe https://mcp.clerk.com/mcp
   check "vercel MCP reachable" probe https://mcp.vercel.com
+  check "mux MCP reachable" probe https://mcp.mux.com
   check "convex MCP starts and lists tools" bash -c "
     (printf '%s\n' '$init' '{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}' \
        '{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}'; sleep 6) \
@@ -77,6 +81,18 @@ if [[ "${1:-}" == "--online" ]]; then
     process.exit('https://' + host === '$fapi' ? 0 : 1);"
   check "Clerk issuer matches CLERK_FRONTEND_API_URL" bash -c "
     curl -sf '$fapi/.well-known/openid-configuration' | grep -q '\"issuer\":\"$fapi\"'"
+
+  echo "Mux (network)"
+  check "mux CLI signed in to the LMS-Platform development environment" bash -c "
+    mux whoami --json 2>/dev/null | node -e \"
+      const me = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+      process.exit(me.environment_name === 'LMS-Platform' && me.environment_type === 'development' ? 0 : 1);\""
+  check "Mux token on the Convex deployment works for LMS-Platform (development)" bash -c "
+    id=\$(npx convex env get MUX_TOKEN_ID 2>/dev/null); secret=\$(npx convex env get MUX_TOKEN_SECRET 2>/dev/null)
+    [ -n \"\$id\" ] && [ -n \"\$secret\" ] || exit 1
+    curl -sf -u \"\$id:\$secret\" https://api.mux.com/system/v1/whoami | node -e \"
+      const me = JSON.parse(require('fs').readFileSync(0, 'utf8')).data;
+      process.exit(me.environment_name === 'LMS-Platform' && me.environment_type === 'development' ? 0 : 1);\""
 
   echo "Vercel project (network)"
   # CONVEX_DEPLOYMENT only drives the local Convex CLI, so Vercel does not need it.

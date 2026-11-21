@@ -9,6 +9,9 @@
     },
     "vercel": {
       "url": "https://mcp.vercel.com"
+    },
+    "mux": {
+      "url": "https://mcp.mux.com"
     }
   }
 }
