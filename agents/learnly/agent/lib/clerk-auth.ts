@@ -35,15 +35,19 @@ export function authorizedParties(env: NodeJS.ProcessEnv = process.env): string[
   return parties.size > 0 ? [...parties] : undefined;
 }
 
-/** Real verification: signature, expiry, `azp`. Networkless when CLERK_JWT_KEY is set, otherwise JWKS via the secret key. */
+/**
+ * Real verification: signature, expiry, `azp`. Networkless when CLERK_JWT_KEY is set, otherwise JWKS via the secret key.
+ * The public `verifyToken` from `@clerk/backend` returns the claims and throws on an invalid token (unlike the internal
+ * `tokens/verify` variant, which returns `{ data, errors }`).
+ */
 export const clerkVerifier: Verifier = async (token) => {
-  const result = await verifyToken(token, {
+  const claims = await verifyToken(token, {
     secretKey: process.env.CLERK_SECRET_KEY,
     jwtKey: process.env.CLERK_JWT_KEY,
     authorizedParties: authorizedParties(),
   });
-  if (result.errors || !result.data) throw new Error("invalid token");
-  return result.data as unknown as Claims;
+  if (!claims?.sub) throw new Error("token has no subject");
+  return claims as unknown as Claims;
 };
 
 export function hasProPlan(pla: unknown): boolean {
@@ -71,7 +75,9 @@ export function clerkAuth(verify: Verifier = clerkVerifier): AuthFn<Request> {
     let claims: Claims;
     try {
       claims = await verify(token);
-    } catch {
+    } catch (error) {
+      // Server-side reason only (never the token); the client gets a generic message.
+      console.warn("[tutor auth] token rejected:", error instanceof Error ? error.message : String(error));
       throw new UnauthenticatedError({ code: "invalid_token", message: "Your session is invalid or expired. Sign in again." });
     }
     if (!claims.sub || claims.sts === "pending") {

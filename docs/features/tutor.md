@@ -45,7 +45,7 @@ Option (a): forward the user's Clerk token to Convex via `ConvexHttpClient.setAu
 ## Remaining risks
 
 - The Clerk token is stored in the session's `auth.current.attributes` (durable run state) for tool use. It lives 60s, but it is persisted; if that is unacceptable, switch to option (b) (Convex internal functions + deploy key keyed by the verified user id; needs Convex changes).
-- Live replies need the AI Gateway model (`openai/gpt-6-luna-fast`); billing may not be enabled.
+- Live replies use Claude Opus 5.5 through the Anthropic API and need `ANTHROPIC_API_KEY` in the agent's environment (`.env.local` locally, Vercel env in production).
 - The agent process must see `CLERK_SECRET_KEY` (and `NEXT_PUBLIC_CONVEX_URL`) at runtime; verify on Vercel.
 - Plan changes only reach the `pla` claim after the token refreshes (up to 60s).
 - `e2e/learnly.spec.ts` (not mine) is stale: the old chat needed no sign-in; `/learnly` now shows the chat UI without a token, and sends fail with 401 until signed in. The page itself should be gated or removed.

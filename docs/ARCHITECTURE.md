@@ -44,7 +44,7 @@ Production (<https://llm-platform-xi.vercel.app>) still runs step 6; steps 7 and
 - **Not verified with a live account:** the `pla` claim name and that `aud: "convex"` survived the claims change (no live token was decoded), real checkout, and signed-in/admin/Pro flows (e2e only covers signed-out flows; a Clerk testing-token setup would add them).
 - **Billing in production:** Clerk Billing needs a production instance (custom domain) and Stripe. The tutor needs `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CONVEX_URL` and `TUTOR_AUTHORIZED_PARTIES` (or `NEXT_PUBLIC_APP_URL`) in the agent's environment.
 - **Follow-ups:** per-page `<title>`s for course and lesson pages (they load client-side and use the default title).
-- **Model credentials for Learnly:** Learnly routes through Vercel AI Gateway (`openai/gpt-6-luna-fast`); enable AI Gateway billing on the Vercel team (or switch `agents/learnly/agent/agent.ts` to a direct provider model with an API key) to receive live model replies.
+- **Learnly model:** Claude Opus 5.5 called directly through the Anthropic API (`anthropic("claude-opus-5-5")` from `eve/models/anthropic`, `reasoning: "medium"`), not AI Gateway. It reads `ANTHROPIC_API_KEY` from `.env.local` (restart `npm run dev:all` after changing it); production needs the same key in Vercel's Production environment. Anthropic's server-side refusal fallbacks aren't enabled: eve's provider layer doesn't expose that request parameter.
 - **Production configuration:** Vercel's Production environment has no variables yet. It needs a Clerk production instance (which requires a custom domain) and a Convex production deploy key. See Hosting on Vercel.
 - **Video lessons:** Mux is set up for development but not used by the app.
 - **Cleanup:** revoke the unused first Mux access token (ID `d6bafe66-…`) in the Mux dashboard.
@@ -83,7 +83,7 @@ UI SDK components can render from server components (their modules already decla
 | Backend & database | [Convex](https://docs.convex.dev) | Schema, queries/mutations/actions, realtime sync, file storage, crons |
 | Hosting | [Vercel](https://vercel.com/docs) | Builds from GitHub, preview and production deployments, CDN, Vercel Functions (server rendering, route handlers) |
 | Video | [Mux](https://www.mux.com/docs) | Lesson video: direct uploads from the admin panel, encoding, streaming playback in the lesson player |
-| AI agents | [eve](https://github.com/vercel/eve) | Durable backend AI agents (`agents/learnly/` -> `/eve/learnly/v1/*`) via Vercel AI Gateway and Workflow |
+| AI agents | [eve](https://github.com/vercel/eve) | Durable backend AI agents (`agents/learnly/` -> `/eve/learnly/v1/*`) with Claude Opus 5.5 via the Anthropic API, durable via Workflow |
 | UI behaviors | [UI SDK](https://ui-sdk.dev/docs) (beta) | Accessible behaviors (focus, keyboard, selection, popups, drag and drop, ARIA) via `@ui-sdk/core` + framework adapter |
 
 Clerk is the only auth provider; Convex validates Clerk-issued session tokens (see Clerk ↔ Convex auth). Convex Auth is intentionally not used.
@@ -217,7 +217,7 @@ README.md                     Quick start: install, dev, deploy and check comman
 agents/                       eve agent workspace (each subfolder is a named agent)
   learnly/
     agent/
-      agent.ts                Learnly model config (`openai/gpt-6-luna-fast`, `defaultTools: false`)
+      agent.ts                Learnly model config (`claude-opus-5-5` via the Anthropic API, `defaultTools: false`)
       instructions.md         Learnly system prompt and AI disclosure
       channels/eve.ts         HTTP channel auth: Clerk session token, Pro or admin only (`lib/clerk-auth.ts`)
       lib/                    Clerk verification, viewer context, Convex client helpers

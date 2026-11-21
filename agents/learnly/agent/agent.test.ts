@@ -4,9 +4,11 @@ import { describe, expect, test } from "vitest";
 import agent from "./agent";
 
 describe("Learnly agent configuration", () => {
-  test("configures a gateway model and disables default shell/file tools", () => {
-    expect(agent.model).toBe("openai/gpt-6-luna-fast");
-    expect(agent.reasoning).toBe("high");
+  test("calls Claude Opus 5.5 directly and disables default shell/file tools", () => {
+    const model = agent.model as { provider?: string; modelId?: string };
+    expect(model.modelId).toBe("claude-opus-5-5");
+    expect(model.provider).toMatch(/anthropic/);
+    expect(agent.reasoning).toBe("medium");
     expect(agent.defaultTools).toBe(false);
   });
 
