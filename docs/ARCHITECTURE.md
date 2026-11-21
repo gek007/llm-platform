@@ -30,7 +30,7 @@ Production (<https://llm-platform-xi.vercel.app>) still runs step 6; steps 7 and
 
 - **Admin:** Clerk `publicMetadata.role = "admin"`, copied into the session token by the custom claim `metadata: {{user.public_metadata}}`. Next.js reads `sessionClaims.metadata.role`; Convex reads `identity.metadata.role` (`convex/lib/auth.ts#isAdmin`).
 - **Pro:** Clerk Billing plan `pro` ($19/month; annual stored as a monthly equivalent of $15.83). Next.js uses `has({ plan: "pro" })`; Convex reads the session token's `pla` claim (`u:pro`) in `isPro`, with `users.plan` as an unused fallback for a future billing webhook.
-- **Lessons:** `convex/lib/access.ts#canAccessLesson` decides; Convex leaves out `body` and `muxPlaybackId` for locked lessons. Free course → signed-in users; free-preview lesson → anyone; Pro course → Pro or admin.
+- **Lessons:** `convex/lib/access.ts#canAccessLesson` decides; Convex leaves out `body` for locked lessons and never sends `muxPlaybackId` to clients (`getForViewer` returns only `hasVideo`). **Video is signed:** assets use `playback_policies: ["signed"]` (free previews included), and `playback.getLessonTokens({ lessonId })` (`convex/playback.ts`, "use node") re-runs the access check with the caller's identity (`playbackData.resolveLessonPlayback` -> `access.ts#playbackIdForViewer`: `canAccessLesson`, draft courses admin-only, video must be `ready`), then signs RS256 playback/thumbnail/storyboard JWTs valid for 2 hours. It returns `null` otherwise, so a copied playback ID is useless; toggling `isFreePreview` takes effect on the next token request. Admins pass the check, so the admin preview uses the same action. Free course → signed-in users; free-preview lesson → anyone; Pro course → Pro or admin.
 - **Tutor:** the browser sends the Clerk session token; the eve channel verifies it (`verifyToken`, `authorizedParties`) and requires Pro or admin; tools call Convex with that same token, so Convex enforces access again.
 
 ### Clerk provider and Cache Components
@@ -43,7 +43,7 @@ Production (<https://llm-platform-xi.vercel.app>) still runs step 6; steps 7 and
 - **Mux webhook (optional):** create it in the Mux Development environment pointing at `<NEXT_PUBLIC_CONVEX_SITE_URL>/mux/webhook` and run `npx convex env set MUX_WEBHOOK_SECRET …`. Without a secret the webhook returns 503 (fail closed) and video status syncs by polling instead. See [admin.md](features/admin.md).
 - **Not verified with a live account:** the `pla` claim name and that `aud: "convex"` survived the claims change (no live token was decoded), real checkout, and signed-in/admin/Pro flows (e2e only covers signed-out flows; a Clerk testing-token setup would add them).
 - **Billing in production:** Clerk Billing needs a production instance (custom domain) and Stripe. The tutor needs `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CONVEX_URL` and `TUTOR_AUTHORIZED_PARTIES` (or `NEXT_PUBLIC_APP_URL`) in the agent's environment.
-- **Follow-ups:** signed Mux playback for Pro lessons (playback IDs are public, though only sent to authorized users); per-page `<title>`s for course and lesson pages (they load client-side and use the default title).
+- **Follow-ups:** per-page `<title>`s for course and lesson pages (they load client-side and use the default title).
 - **Model credentials for Learnly:** Learnly routes through Vercel AI Gateway (`openai/gpt-6-luna-fast`); enable AI Gateway billing on the Vercel team (or switch `agents/learnly/agent/agent.ts` to a direct provider model with an API key) to receive live model replies.
 - **Production configuration:** Vercel's Production environment has no variables yet. It needs a Clerk production instance (which requires a custom domain) and a Convex production deploy key. See Hosting on Vercel.
 - **Video lessons:** Mux is set up for development but not used by the app.
@@ -136,7 +136,7 @@ Deployments normally come from Git pushes. `vercel deploy` from this folder crea
 | Git repository | [gek007/llm-platform](https://github.com/gek007/llm-platform) (public), branch `main` | [github.com](https://github.com/gek007/llm-platform) |
 | Clerk application | "LMS Platform" `app_3MQ6Ah3aicMxqGdRvLxQwJi2ljf` (development instance) | [dashboard.clerk.com](https://dashboard.clerk.com) |
 | Convex project | `kostya-shilkrot/llm-platform`: dev deployment `hallowed-iguana-534`, prod deployment `tremendous-firefly-113` (both eu-west-1; prod is empty and read-only to the MCP server) | [dashboard.convex.dev](https://dashboard.convex.dev/t/kostya-shilkrot/llm-platform) |
-| Mux environment | `LMS-Platform` (type development) in the `aicy` organization; empty so far. The Mux MCP and the `mux` CLI (OAuth, environment `aicy-lms-platform`) are both signed in to it | [dashboard.mux.com](https://dashboard.mux.com) |
+| Mux environment | `LMS-Platform` (type development) in the `aicy` organization; no assets yet (checked when signed playback was added); one signing key. The Mux MCP and the `mux` CLI (OAuth, environment `aicy-lms-platform`) are both signed in to it | [dashboard.mux.com](https://dashboard.mux.com) |
 | Vercel project | `llm-platform` in "gek007's projects" (see Hosting on Vercel) | [vercel.com/gek007s-projects/llm-platform](https://vercel.com/gek007s-projects/llm-platform) |
 
 `.env.local` (git-ignored, mode 600):
@@ -156,7 +156,8 @@ Convex deployment env vars (`npx convex env list`), read by Convex functions:
 | Key | Value |
 | --- | ----- |
 | `CLERK_FRONTEND_API_URL` | Clerk Frontend API URL of the dev instance (`https://pro-giraffe-8779.clerk.accounts.dev`), read by `convex/auth.config.ts`. Clerk's guide uses this name; Convex's older docs call it `CLERK_JWT_ISSUER_DOMAIN`. |
-| `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` | Mux access token for the `LMS-Platform` development environment (Video, Data, Robots and System, read and write), for server-side Mux calls from Convex actions. Not used by any function yet. The same pair is in `.env.local`; it never goes into `NEXT_PUBLIC_*` variables or Vercel unless a Next.js route handler calls Mux |
+| `MUX_SIGNING_KEY_ID`, `MUX_SIGNING_PRIVATE_KEY` | Mux signing key of the `LMS-Platform` development environment (private key base64, as Mux returns it), used by `convex/playback.ts` to sign playback tokens. Set only on the Convex deployment (piped into `npx convex env set`); never in `.env.local`, files or Vercel. Production needs its own key in the production Mux environment |
+| `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` | Mux access token for the `LMS-Platform` development environment (Video, Data, Robots and System, read and write), for server-side Mux calls from Convex actions. Used by `convex/mux.ts` (uploads, sync, removal). The same pair is in `.env.local`; it never goes into `NEXT_PUBLIC_*` variables or Vercel unless a Next.js route handler calls Mux |
 
 Setting up a new machine: `clerk auth login && clerk link --app app_3MQ6Ah3aicMxqGdRvLxQwJi2ljf && clerk env pull --file .env.local`, then `npx convex dev` (select the existing `llm-platform` project), then `vercel login && vercel link --project llm-platform --scope gek007s-projects`. `scripts/check-dev-tooling.sh` fails if `.env.local` is missing a key listed in `.env.example` or the folder isn't linked to the Vercel project.
 
@@ -199,7 +200,7 @@ convex/                       Convex backend functions; convex/_generated/ is wr
   auth.config.ts              Trusts Clerk session tokens (see Clerk ↔ Convex auth)
   schema.ts                   Tables and indexes (see Data model)
   lib/                        auth.ts (identity, isAdmin, isPro), access.ts (canAccessLesson), seedData.ts
-  courses.ts lessons.ts …     Public and student functions; admin.ts, mux.ts ("use node"), muxData.ts, http.ts for admin
+  courses.ts lessons.ts …     Public and student functions; admin.ts, mux.ts and playback.ts ("use node"), muxData.ts, playbackData.ts, http.ts for admin and video
   *.test.ts                   convex-test unit tests (never deployed: two dots in the name)
 docs/ARCHITECTURE.md          This file
 docs/features/                Reference page per feature area (see Status)
@@ -265,6 +266,7 @@ Defined in `convex/schema.ts`; seed data in `convex/lib/seedData.ts` (`npx conve
 | `enrollments` | `enroll` (`PRO_REQUIRED` error), `isEnrolled`, `listMine` |
 | `progress` | `setComplete`, `forCourse` |
 | `users`, `viewer` | `store` (upsert on sign-in), `get` (`signedIn`, `isAdmin`, `isPro`, `user`) |
+| `playback` | `getLessonTokens` (action): signed Mux tokens after an access check; `null` when locked or no ready video |
 | `admin`, `mux` | Admin-only CRUD, lesson reorder, cascading course delete, Mux direct upload, `syncLessonVideo`, `removeVideo` |
 | `http` | `POST /mux/webhook` (signature-verified, fails closed without `MUX_WEBHOOK_SECRET`) |
 

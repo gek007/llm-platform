@@ -1,12 +1,12 @@
 "use client";
 
-import MuxPlayer from "@mux/mux-player-react";
 import MuxUploader from "@mux/mux-uploader-react";
 import { useAction } from "convex/react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { confirm } from "@ui-sdk/react/alert-dialog";
+import { LessonVideo } from "@/components/video/lesson-video";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "./admin-utils";
 import { StatusMessage } from "./admin-fields";
@@ -85,9 +85,12 @@ export function VideoPanel({ lesson }: { lesson: Doc<"lessons"> }) {
       </div>
 
       {status === "ready" && lesson.muxPlaybackId && !replacing ? (
-        <div className="overflow-hidden rounded-lg border border-line">
-          <MuxPlayer playbackId={lesson.muxPlaybackId} accentColor="#ff8a3d" metadata={{ video_title: lesson.title }} />
-        </div>
+        <LessonVideo
+          key={lesson._id}
+          lessonId={lesson._id}
+          title={lesson.title}
+          className="aspect-video overflow-hidden rounded-lg border border-line bg-black"
+        />
       ) : null}
 
       {showUploader ? (

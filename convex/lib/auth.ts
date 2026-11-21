@@ -52,9 +52,14 @@ export async function isPro(ctx: Ctx): Promise<boolean> {
   const identity = await getIdentity(ctx);
   if (!identity) return false;
   if (claimsIsPlan(identity, PRO_PLAN_SLUG)) return true;
+  return await userRecordIsPro(ctx, identity.subject);
+}
+
+/** `users.plan` fallback for the Pro check, by Clerk user ID. */
+export async function userRecordIsPro(ctx: Pick<Ctx, "db">, subject: string): Promise<boolean> {
   const user = await ctx.db
     .query("users")
-    .withIndex("by_clerkId", (q) => q.eq("clerkId", identity.subject))
+    .withIndex("by_clerkId", (q) => q.eq("clerkId", subject))
     .unique();
   return user?.plan === "pro";
 }

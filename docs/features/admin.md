@@ -31,10 +31,11 @@ Every function calls `requireAdmin` first (actions too). Errors are `ConvexError
 
 ## Mux flow
 
-1. Uploader calls `createUpload({ lessonId })`: Mux direct upload (`playback_policies: ["public"]`, `cors_origin` = `MUX_CORS_ORIGIN` or `*`), lesson gets `muxUploadId` + `videoStatus: "waiting"`, the URL is returned.
+1. Uploader calls `createUpload({ lessonId })`: Mux direct upload (`playback_policies: ["signed"]`, `cors_origin` = `MUX_CORS_ORIGIN` or `*`), lesson gets `muxUploadId` + `videoStatus: "waiting"`, the URL is returned.
 2. The browser PUTs the file straight to Mux.
 3. Status: the UI calls `syncLessonVideo` every 4 s while status is waiting/processing (works with no webhook). It polls upload then asset: asset ready -> `muxPlaybackId` + `ready`; errored -> `errored`; otherwise `processing`. The webhook does the same via events `video.upload.asset_created`, `video.asset.ready`, `video.asset.errored` (also `video.upload.errored/cancelled`).
-4. `removeVideo` deletes the asset (404 ignored) and clears upload/asset/playback/status.
+4. Preview and playback: the panel's player is `LessonVideo`, which calls `playback.getLessonTokens({ lessonId })` (admins always pass the access check, drafts included) and plays with the signed tokens. Videos uploaded before signed playback was introduced would have public playback IDs and no signed ID; re-upload them (the dev environment had none).
+5. `removeVideo` deletes the asset (404 ignored) and clears upload/asset/playback/status.
 
 ## Webhook setup (manual)
 
@@ -45,7 +46,7 @@ Every function calls `requireAdmin` first (actions too). Errors are `ConvexError
 
 ## Env vars (Convex deployment)
 
-`MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` (set), `MUX_WEBHOOK_SECRET` (required for the webhook to accept anything), `MUX_WEBHOOK_ALLOW_UNSIGNED` (dev-only escape hatch, leave unset), `MUX_CORS_ORIGIN` (optional; set to the site origin in production, default `*`).
+`MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` (set), `MUX_SIGNING_KEY_ID`, `MUX_SIGNING_PRIVATE_KEY` (set; signed playback), `MUX_WEBHOOK_SECRET` (required for the webhook to accept anything), `MUX_WEBHOOK_ALLOW_UNSIGNED` (dev-only escape hatch, leave unset), `MUX_CORS_ORIGIN` (optional; set to the site origin in production, default `*`).
 
 ## Tests
 

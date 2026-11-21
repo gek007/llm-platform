@@ -26,7 +26,6 @@ export function LessonPlayer({ data, outline, completedIds, signedIn }: Props) {
   const returnTo = `/courses/${course.slug}/lessons/${lesson.slug}`;
   const completed = completedIds.includes(lesson._id);
   const body = "body" in lesson ? lesson.body : undefined;
-  const playbackId = "muxPlaybackId" in lesson ? lesson.muxPlaybackId : undefined;
 
   return (
     <div
@@ -62,9 +61,9 @@ export function LessonPlayer({ data, outline, completedIds, signedIn }: Props) {
           />
         ) : (
           <>
-            {playbackId ? (
+            {lesson.hasVideo ? (
               <div className="mb-8">
-                <LessonVideo playbackId={playbackId} title={lesson.title} courseTitle={course.title} />
+                <LessonVideo key={lesson._id} lessonId={lesson._id} title={lesson.title} courseTitle={course.title} />
               </div>
             ) : null}
             <div className="prose-lesson">

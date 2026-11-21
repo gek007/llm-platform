@@ -8,8 +8,8 @@ vi.mock("convex/react", () => ({
   useMutation: () => Object.assign(vi.fn(), { withOptimisticUpdate() { return vi.fn(); } }),
 }));
 vi.mock("@/components/video/lesson-video", () => ({
-  LessonVideo: ({ playbackId, title }: { playbackId: string; title: string }) => (
-    <div data-testid="video" data-playback={playbackId} data-title={title} />
+  LessonVideo: ({ lessonId, title }: { lessonId: string; title: string }) => (
+    <div data-testid="video" data-lesson={lessonId} data-title={title} />
   ),
 }));
 
@@ -19,10 +19,10 @@ const outline: OutlineLesson[] = [
 ];
 
 function data(over: { locked: boolean; tier?: "free" | "pro"; withVideo?: boolean }): LessonData {
-  const base = { _id: "l1", slug: "one", title: "One", summary: "Intro summary", order: 1, durationMinutes: 10, isFreePreview: true, hasVideo: true };
+  const base = { _id: "l1", slug: "one", title: "One", summary: "Intro summary", order: 1, durationMinutes: 10, isFreePreview: true, hasVideo: over.withVideo ?? false };
   return {
     course: { _id: "c1", slug: "c", title: "Course", tier: over.tier ?? "pro" },
-    lesson: over.locked ? base : { ...base, body: "## Secret body\n\nHello **world**", ...(over.withVideo ? { muxPlaybackId: "pb123" } : {}) },
+    lesson: over.locked ? base : { ...base, body: "## Secret body\n\nHello **world**" },
     locked: over.locked,
     prev: null,
     next: { slug: "two", title: "Two", locked: true },
@@ -35,7 +35,7 @@ describe("LessonPlayer", () => {
       <LessonPlayer data={data({ locked: false, withVideo: true })} outline={outline} completedIds={[]} signedIn />,
     );
     expect(screen.getByRole("heading", { name: "Secret body" })).toBeInTheDocument();
-    expect(screen.getByTestId("video")).toHaveAttribute("data-playback", "pb123");
+    expect(screen.getByTestId("video")).toHaveAttribute("data-lesson", "l1");
     expect(screen.getByRole("button", { name: "Mark as complete" })).toBeInTheDocument();
     const root = container.querySelector("[data-course-slug]");
     expect(root).toHaveAttribute("data-course-slug", "c");

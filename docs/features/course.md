@@ -13,11 +13,11 @@
 
 - `src/components/course/`: `course-card`, `course-catalog`, `course-detail`, `dashboard-courses`, `enroll-button`, `lesson-outline`, `progress-bar`, `badges`, `icons`, `format.ts` (duration/href helpers).
 - `src/components/lesson/`: `lesson-view` (fetches), `lesson-player` (presentational, carries `data-course-slug` / `data-lesson-slug`), `complete-toggle` (optimistic `progress.setComplete`), `locked-lesson`, `lesson-nav`, `lesson-sidebar` (collapsible below `lg`).
-- `src/components/video/lesson-video.tsx`: `@mux/mux-player-react/lazy` with title/series metadata.
+- `src/components/video/lesson-video.tsx`: `@mux/mux-player-react/lazy` with title/series metadata. It mints signed tokens on mount via `usePlaybackTokens` (`playback.getLessonTokens`, 2 hour lifetime), shows loading, unavailable and error states, and re-mints on a player error (at most every 30 s).
 
 ## Data flow
 
-All data is fetched client-side with `useQuery`, so it is reactive and auth-aware (the Convex token only exists in the browser). Pages SSR the skeleton, then hydrate. Gating is entirely server-side in Convex: the player only renders the body or video when `getForViewer` returns them (`locked` lessons have neither), and `LockedLesson` never receives a body.
+All data is fetched client-side with `useQuery`, so it is reactive and auth-aware (the Convex token only exists in the browser). Pages SSR the skeleton, then hydrate. Gating is entirely server-side in Convex: the player only renders the body or video when `getForViewer` returns them (`locked` lessons have neither). `getForViewer` only says `hasVideo`; the playback ID never reaches the client, and the video plays only with a token that Convex signs after re-checking access, and `LockedLesson` never receives a body.
 
 Locked card: signed out gets "Sign in to continue" (+ "See Pro plan" for pro courses); signed in without Pro gets "Upgrade to Pro" linking to `/pricing`. Sign-in links use `/sign-in?redirect_url=<path>`.
 
@@ -29,3 +29,5 @@ Enroll button states: loading, signed out, enrolled (Continue), pro without Pro 
 - No Convex changes needed. `enrollments.listMine` does not return `durationMinutes`, so dashboard cards omit duration.
 - No new packages.
 - Unrelated typecheck/lint failures seen in other agents' files at the time of writing: `src/components/admin/use-admin-query.ts`, `src/components/tutor/*`.
+
+Signed playback tests: `convex/playback.test.ts` (access decision: locked, free preview, Pro, admin, drafts, not-ready), `convex/playbackSigning.test.ts` (RS256 tokens with a generated key), `src/components/video/lesson-video.test.tsx`.

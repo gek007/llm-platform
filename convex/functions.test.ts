@@ -50,6 +50,8 @@ describe("gating", () => {
     });
     expect(preview?.locked).toBe(false);
     expect(preview?.lesson.body).toContain("```quiz");
+    // The playback ID never leaves via getForViewer; video needs a signed token from the action.
+    expect(preview?.lesson).not.toHaveProperty("muxPlaybackId");
   });
 
   it("unlocks pro lessons for pro members via the pla claim and for admins", async () => {

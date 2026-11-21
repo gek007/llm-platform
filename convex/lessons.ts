@@ -29,8 +29,9 @@ export const getForViewer = query({
     const publicLesson = {
       ...rest,
       hasVideo: Boolean(muxPlaybackId),
-      // Body and playback ID only ever leave the server for authorized viewers.
-      ...(locked ? {} : { body, muxPlaybackId }),
+      // The body only ever leaves the server for authorized viewers. The playback ID never does:
+      // video is signed, and tokens come from `playback.getLessonTokens` after the same check.
+      ...(locked ? {} : { body }),
     };
     const ref = (l: (typeof all)[number] | undefined) =>
       l

@@ -39,7 +39,7 @@ export const createUpload = action({
     await deleteAsset(client, lesson.muxAssetId);
     const upload = await client.video.uploads.create({
       cors_origin: process.env.MUX_CORS_ORIGIN ?? "*",
-      new_asset_settings: { playback_policies: ["public"] },
+      new_asset_settings: { playback_policies: ["signed"] },
     });
     if (!upload.url) throw new ConvexError("MUX_UPLOAD_FAILED");
     await ctx.runMutation(internal.muxData.setVideo, {

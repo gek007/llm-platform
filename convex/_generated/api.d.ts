@@ -18,6 +18,8 @@ import type * as lib_auth from "../lib/auth.js";
 import type * as lib_seedData from "../lib/seedData.js";
 import type * as mux from "../mux.js";
 import type * as muxData from "../muxData.js";
+import type * as playback from "../playback.js";
+import type * as playbackData from "../playbackData.js";
 import type * as progress from "../progress.js";
 import type * as seed from "../seed.js";
 import type * as users from "../users.js";
@@ -40,6 +42,8 @@ declare const fullApi: ApiFromModules<{
   "lib/seedData": typeof lib_seedData;
   mux: typeof mux;
   muxData: typeof muxData;
+  playback: typeof playback;
+  playbackData: typeof playbackData;
   progress: typeof progress;
   seed: typeof seed;
   users: typeof users;

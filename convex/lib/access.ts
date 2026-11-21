@@ -19,3 +19,24 @@ export function canAccessLesson(args: {
   if (course.tier === "free") return signedIn;
   return signedIn && pro;
 }
+
+export type PlaybackLesson = AccessLesson & {
+  muxPlaybackId?: string;
+  videoStatus?: "waiting" | "processing" | "ready" | "errored";
+};
+
+/**
+ * The Mux playback ID a viewer may be given a token for, or null when the lesson is locked
+ * or has no ready video. Same access rule as the lesson body (`canAccessLesson`).
+ */
+export function playbackIdForViewer(args: {
+  course: AccessCourse;
+  lesson: PlaybackLesson;
+  signedIn: boolean;
+  pro: boolean;
+  admin: boolean;
+}): string | null {
+  const { lesson } = args;
+  if (!lesson.muxPlaybackId || lesson.videoStatus !== "ready") return null;
+  return canAccessLesson(args) ? lesson.muxPlaybackId : null;
+}
