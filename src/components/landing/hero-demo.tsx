@@ -2,7 +2,9 @@
 
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
+import { siteConfig } from "@/config/site";
 import { cn } from "@/lib/utils";
+import { HeroVideo } from "./hero-video";
 
 const CODE = `const lesson = await getLesson(slug);
 if (lesson.locked) return <Upgrade />;
@@ -39,7 +41,7 @@ function useTypewriter(text: string, active: boolean, reduced: boolean) {
 
 const options = ["A mutable copy", "A readonly literal type", "A runtime check"];
 
-/** Decorative animated mock of a lesson: video, code typing in, a quiz, progress ring and tutor bubble. */
+/** Animated lesson preview with a playable Mux video clip, code typing in, quiz, progress ring and tutor bubble. */
 export function HeroDemo() {
   const reduced = useReducedMotion() ?? false;
   const phase = useDemoClock(reduced);
@@ -51,12 +53,12 @@ export function HeroDemo() {
 
   return (
     <div
-      aria-hidden="true"
       data-testid="hero-demo"
       data-reduced={reduced ? "true" : "false"}
       className="relative mx-auto w-full max-w-xl select-none"
     >
       <div
+        aria-hidden="true"
         className="absolute -inset-6 -z-10 rounded-[2rem] opacity-70 blur-3xl"
         style={{
           background:
@@ -64,7 +66,10 @@ export function HeroDemo() {
         }}
       />
       <div className="overflow-hidden rounded-xl border border-line-strong bg-surface shadow-lift">
-        <div className="flex items-center gap-2 border-b border-line bg-surface-2 px-4 py-2.5">
+        <div
+          aria-hidden="true"
+          className="flex items-center gap-2 border-b border-line bg-surface-2 px-4 py-2.5"
+        >
           <span className="size-2.5 rounded-full bg-danger/70" />
           <span className="size-2.5 rounded-full bg-warning/70" />
           <span className="size-2.5 rounded-full bg-success/70" />
@@ -75,26 +80,19 @@ export function HeroDemo() {
 
         <div className="grid gap-4 p-4 sm:grid-cols-[1.4fr_1fr]">
           <div className="flex flex-col gap-4">
-            <div className="relative aspect-video overflow-hidden rounded-lg bg-linear-to-br from-surface-3 via-surface-2 to-bg">
-              <div className="absolute inset-0 grid place-items-center">
-                <div className="grid size-12 place-items-center rounded-full bg-accent text-accent-fg shadow-glow">
-                  <svg viewBox="0 0 16 16" className="ml-0.5 size-5" fill="currentColor">
-                    <path d="M4 2.5v11l9-5.5z" />
-                  </svg>
-                </div>
-              </div>
-              <div className="absolute inset-x-3 bottom-3 h-1 overflow-hidden rounded-full bg-line-strong">
-                <motion.div
-                  className="h-full origin-left rounded-full bg-accent"
-                  key={reduced ? "static" : `video-${phase === 0}`}
-                  initial={{ scaleX: reduced ? 0.6 : 0 }}
-                  animate={{ scaleX: reduced ? 0.6 : phase === 0 ? 0.55 : 0.6 }}
-                  transition={{ duration: reduced ? 0 : phase === 0 ? PHASES[0] / 1000 : 0 }}
-                />
-              </div>
-            </div>
+            <HeroVideo
+              playbackId={siteConfig.heroVideo.playbackId}
+              title={siteConfig.heroVideo.title}
+              durationLabel={siteConfig.heroVideo.durationLabel}
+              phase={phase}
+              phaseDurationMs={PHASES[0]}
+              reduced={reduced}
+            />
 
-            <div className="rounded-lg border border-line bg-bg p-3 font-mono text-[11px] leading-relaxed text-accent-soft sm:text-xs">
+            <div
+              aria-hidden="true"
+              className="rounded-lg border border-line bg-bg p-3 font-mono text-[11px] leading-relaxed text-accent-soft sm:text-xs"
+            >
               <pre className="min-h-[3.9em] whitespace-pre-wrap">
                 {typed}
                 {!reduced && phase >= 1 && phase < 2 ? (
@@ -104,7 +102,7 @@ export function HeroDemo() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div aria-hidden="true" className="flex flex-col gap-4">
             <motion.div
               animate={{ opacity: quizOn ? 1 : 0.35 }}
               transition={{ duration: dur }}
@@ -168,6 +166,7 @@ export function HeroDemo() {
       </div>
 
       <motion.div
+        aria-hidden="true"
         data-testid="tutor-bubble"
         initial={false}
         animate={{ opacity: tutorOn ? 1 : 0, y: tutorOn ? 0 : 16, scale: tutorOn ? 1 : 0.96 }}

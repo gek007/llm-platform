@@ -12,6 +12,7 @@ if (typeof HTMLElement !== "undefined") {
   // jsdom lacks these, or has them without the parts ui-sdk needs, so assign rather than `??=`.
   HTMLElement.prototype.showPopover = function () {};
   HTMLElement.prototype.hidePopover = function () {};
+  HTMLCanvasElement.prototype.getContext = () => null;
   Element.prototype.getAnimations = () => [];
   Element.prototype.scrollIntoView = function () {};
   Element.prototype.checkVisibility = () => true;

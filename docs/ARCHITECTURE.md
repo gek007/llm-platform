@@ -247,7 +247,7 @@ src/
     layout/                   Site header and footer
     providers/                ClerkClientProvider, ConvexClientProvider (stores the user on sign-in)
     markdown/                 LessonMarkdown, CodeBlock, QuizBlock, parseQuiz
-    landing/ pricing/         Landing sections, hero animation, pricing plans, Pro plan ID lookup
+    landing/ pricing/         Landing sections, full-page LMS knowledge-graph backdrop, hero animation + Mux preview player, pricing plans, Pro plan ID lookup
     course/ lesson/ video/    Catalog, course detail, lesson player, Mux player wrapper, dashboard
     admin/                    Admin forms, lessons list, Mux video panel
     tutor/                    Floating AI tutor widget and chat
@@ -306,8 +306,8 @@ Lesson markdown supports GFM, highlighted code blocks with a copy button, and qu
 | ------- | ------------ |
 | `npm run typecheck` | `next typegen` (route types such as `LayoutProps`) then `tsc --noEmit` |
 | `npm run lint` | ESLint |
-| `npm test` | Vitest once (`src/**/*.test.{ts,tsx}`, `convex/**/*.test.ts`, `agents/**/*.test.ts`; 148 tests in 31 files); `npm run test:watch` for watch mode |
-| `npm run test:e2e` | Playwright; builds Learnly and Next.js and starts a production server on `PORT` (default 3100); 21 tests, signed-out flows only. Outside CI it reuses a server already listening on that port, so stop any `next start` there first or you test a stale build |
+| `npm test` | Vitest once (`src/**/*.test.{ts,tsx}`, `convex/**/*.test.ts`, `agents/**/*.test.ts`; 174 tests in 37 files); `npm run test:watch` for watch mode |
+| `npm run test:e2e` | Playwright; builds Learnly and Next.js and starts a production server on `PORT` (default 3100); 23 tests, signed-out flows only. Outside CI it reuses a server already listening on that port, so stop any `next start` there first or you test a stale build |
 | `npm run info:learnly` | Inspects eve discovery, tools, and diagnostics for `agents/learnly/` |
 | `npm run eval:learnly` | Runs `agents/learnly/evals/` against a local Learnly server (needs live model credentials) |
 | `scripts/check-dev-tooling.sh [--online]` | Dev tooling and service configuration (see Repository layout) |

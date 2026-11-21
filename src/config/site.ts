@@ -6,6 +6,13 @@ export const siteConfig = {
     { href: "/courses", label: "Courses" },
     { href: "/pricing", label: "Pricing" },
   ],
+  heroVideo: {
+    playbackId:
+      process.env.NEXT_PUBLIC_HERO_MUX_PLAYBACK_ID ||
+      "PdxEebalRZQBn02792cVqC02jmAjtHNHFGHSai013BOfsU",
+    title: "Learnly studio preview",
+    durationLabel: "0:08",
+  },
   // Placeholder content: the owner fills this in.
   tutor: {
     name: "Alex Rivera",

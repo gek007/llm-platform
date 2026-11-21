@@ -20,9 +20,10 @@ class FakeIntersectionObserver {
 vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
 
 describe("Home page", () => {
-  test("has one h1 and the landing sections in order", () => {
+  test("has one h1, the full-page backdrop, and the landing sections in order", () => {
     render(<Home />);
 
+    expect(screen.getByTestId("knowledge-graph-backdrop")).toHaveAttribute("aria-hidden", "true");
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("knows where you are");
 

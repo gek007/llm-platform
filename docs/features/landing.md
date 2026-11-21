@@ -2,8 +2,9 @@
 
 ## What was built
 
-- **`/` (landing):** `src/app/page.tsx` composes server components; client components only at the leaves (`Reveal`, `HeroDemo`).
-  - `src/components/landing/hero-demo.tsx`: decorative (aria-hidden) animated mock of a lesson, driven by a looping phase clock (video scrubber, code typing in, quiz answered, progress ring filling, AI tutor bubble). With `prefers-reduced-motion` it renders the finished state with no timers or transitions (`useReducedMotion` from `motion/react`).
+- **`/` (landing):** `src/app/page.tsx` composes server components inside `<main className="relative isolate flex-1 overflow-x-clip">`; client components live only at the leaves (`KnowledgeGraphBackdrop`, `Reveal`, `HeroDemo`).
+  - `src/components/landing/knowledge-graph-backdrop.tsx` + `knowledge-graph-model.ts`: decorative (`aria-hidden`, `pointer-events-none`) full-viewport `<canvas>` fixed behind all landing sections (`-z-10`). Renders a deterministic curriculum knowledge graph — curved learning tracks, prerequisite bridges, lesson nodes, scroll-reactive mastery milestone rings, AI tutor hubs, and traveling ember/iris/emerald pulses — with subtle desktop pointer glow, `visibilitychange` pausing, mobile density scaling, and a single static frame with no `requestAnimationFrame` loop under `prefers-reduced-motion`.
+  - `src/components/landing/hero-demo.tsx` + `hero-video.tsx`: animated lesson preview (video scrubber, code typing in, quiz answered, progress ring filling, AI tutor bubble) whose video window is a click-to-play Mux preview (`HeroVideo`). Before click it renders a Mux poster facade (`image.mux.com/<playbackId>/thumbnail.webp`) and accessible play trigger; on click it mounts `@mux/mux-player-react/lazy` with the dedicated public hero Mux asset (`learnly-hero-preview`, 8 s, `siteConfig.heroVideo.playbackId`, optional `NEXT_PUBLIC_HERO_MUX_PLAYBACK_ID` override). Non-interactive decorative panels remain `aria-hidden="true"`. With `prefers-reduced-motion` it renders the finished state with no timers or transitions (`useReducedMotion` from `motion/react`).
   - `reveal.tsx`: scroll reveal (`whileInView`, once); plain div under reduced motion.
   - `course-catalog.tsx`: async server component, `fetchQuery(api.courses.listPublished)` inside `<Suspense>` with a skeleton; falls back to a message if Convex fails. `course-card.tsx`: tier badge, level, lesson count, duration, link to `/courses/[slug]`.
   - `features-section.tsx`, `tutor-section.tsx` (`siteConfig.tutor` bio plus an AI tutor chat mock), `pricing-teaser.tsx`, `final-cta.tsx`.
@@ -33,4 +34,4 @@
 
 ## Tests
 
-`npx vitest run src/app/page.test.tsx src/components/landing src/components/pricing`: 3 files, 10 tests. E2E: `e2e/landing.spec.ts` (4), `e2e/pricing.spec.ts` (4).
+`npx vitest run src/app/page.test.tsx src/components/landing src/components/pricing`: 6 files, 21 tests. E2E: `e2e/landing.spec.ts` (6), `e2e/pricing.spec.ts` (4).

@@ -4,6 +4,7 @@ import { CourseCatalog, CourseCatalogSkeleton } from "@/components/landing/cours
 import { FeaturesSection } from "@/components/landing/features-section";
 import { FinalCta } from "@/components/landing/final-cta";
 import { HeroDemo } from "@/components/landing/hero-demo";
+import { KnowledgeGraphBackdrop } from "@/components/landing/knowledge-graph-backdrop";
 import { PricingTeaser } from "@/components/landing/pricing-teaser";
 import { Reveal } from "@/components/landing/reveal";
 import { TutorSection } from "@/components/landing/tutor-section";
@@ -11,7 +12,8 @@ import { Button } from "@/components/ui/button";
 
 export default function Home() {
   return (
-    <main className="flex-1 overflow-x-clip">
+    <main className="relative isolate flex-1 overflow-x-clip">
+      <KnowledgeGraphBackdrop />
       <section className="mx-auto grid w-full max-w-6xl items-center gap-16 px-4 pb-24 pt-16 sm:px-6 lg:grid-cols-[1fr_1.1fr] lg:pt-24">
         <div>
           <p className="inline-flex items-center gap-2 rounded-full border border-line-strong bg-surface-2 px-3 py-1 text-xs text-muted">
