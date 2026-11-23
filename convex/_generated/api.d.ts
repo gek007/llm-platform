@@ -11,6 +11,7 @@
 import type * as admin from "../admin.js";
 import type * as chapters from "../chapters.js";
 import type * as courses from "../courses.js";
+import type * as crons from "../crons.js";
 import type * as engine from "../engine.js";
 import type * as enrollments from "../enrollments.js";
 import type * as generation from "../generation.js";
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   chapters: typeof chapters;
   courses: typeof courses;
+  crons: typeof crons;
   engine: typeof engine;
   enrollments: typeof enrollments;
   generation: typeof generation;

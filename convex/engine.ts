@@ -645,3 +645,35 @@ export const failJob = internalMutation({
     return {};
   },
 });
+
+const STALL_MS = 15 * 60 * 1000;
+
+/**
+ * Watchdog (cron): fails researching/writing jobs with no activity for 15 minutes so the admin can
+ * "Retry phase". A later agent write to a failed job resumes it (see the engine save helpers).
+ */
+export const failStalledJobs = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    for (const status of ["researching", "writing"] as const) {
+      const jobs = await ctx.db
+        .query("generationJobs")
+        .withIndex("by_status", (q) => q.eq("status", status))
+        .collect();
+      for (const job of jobs) {
+        const latest = await ctx.db
+          .query("generationEvents")
+          .withIndex("by_job_at", (q) => q.eq("jobId", job._id))
+          .order("desc")
+          .first();
+        const lastActivity = Math.max(latest?.at ?? 0, job.updatedAt);
+        if (now - lastActivity <= STALL_MS) continue;
+        const error = "No progress for 15 minutes";
+        await transition(ctx, job, [status], "failed", { error });
+        await logEvent(ctx, job._id, "error", error);
+      }
+    }
+    return {};
+  },
+});

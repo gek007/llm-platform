@@ -1,8 +1,8 @@
 /// <reference types="vite/client" />
 // @vitest-environment edge-runtime
 import { convexTest } from "convex-test";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { api } from "./_generated/api";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { checkEngineSecret } from "./lib/engineAuth";
 import schema from "./schema";
@@ -511,5 +511,67 @@ describe("each field is scanned on its own (no cross-field fence tricks)", () =>
     const res = await post(t, "saveTest", { jobId, chapterOrder: 1, questions: qs });
     expect(res.status).toBe(400);
     expect(res.json.error).toBe("Unknown reference: https://evil.example/s");
+  });
+});
+
+describe("failStalledJobs watchdog", () => {
+  const MIN = 60_000;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-23T10:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const run = (t: T) => t.mutation(internal.engine.failStalledJobs, {});
+
+  it("fails a researching job whose last activity is 16 minutes old", async () => {
+    const t = makeT();
+    const jobId = await researchingJob(t);
+    vi.advanceTimersByTime(16 * MIN);
+    await run(t);
+    expect(await job(t, jobId)).toMatchObject({ status: "failed", error: "No progress for 15 minutes" });
+    const events = await t.run((ctx) =>
+      ctx.db.query("generationEvents").withIndex("by_job_at", (q) => q.eq("jobId", jobId)).collect(),
+    );
+    expect(events.some((e) => e.kind === "error" && e.message === "No progress for 15 minutes")).toBe(true);
+  });
+  it("fails a stalled writing job", async () => {
+    const t = makeT();
+    const { jobId } = await writingJob(t);
+    vi.advanceTimersByTime(16 * MIN);
+    await run(t);
+    expect((await job(t, jobId))?.status).toBe("failed");
+  });
+  it("leaves a job with activity 10 minutes ago unchanged", async () => {
+    const t = makeT();
+    const jobId = await researchingJob(t);
+    vi.advanceTimersByTime(10 * MIN);
+    await run(t);
+    expect((await job(t, jobId))?.status).toBe("researching");
+  });
+  it("a recent event keeps an old-updatedAt job alive", async () => {
+    const t = makeT();
+    const jobId = await researchingJob(t);
+    vi.advanceTimersByTime(14 * MIN);
+    await t.run((ctx) =>
+      ctx.db.insert("generationEvents", { jobId, at: Date.now(), kind: "info", message: "working" }),
+    );
+    vi.advanceTimersByTime(10 * MIN);
+    await run(t);
+    expect((await job(t, jobId))?.status).toBe("researching");
+  });
+  it("never fails outline_ready, queued or ready jobs", async () => {
+    const t = makeT();
+    const queued = await asAdmin(t).mutation(api.generation.createJob, jobArgs);
+    const outlineReady = await asAdmin(t).mutation(api.generation.createJob, jobArgs);
+    await setStatus(t, outlineReady, "outline_ready", { outline: outline2x2 });
+    const ready = await asAdmin(t).mutation(api.generation.createJob, jobArgs);
+    await setStatus(t, ready, "ready");
+    vi.advanceTimersByTime(60 * MIN);
+    await run(t);
+    expect((await job(t, queued))?.status).toBe("queued");
+    expect((await job(t, outlineReady))?.status).toBe("outline_ready");
+    expect((await job(t, ready))?.status).toBe("ready");
   });
 });
