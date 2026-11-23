@@ -35,3 +35,23 @@ describe("parseResourceBlock", () => {
     }
   });
 });
+
+describe("youtubeIdFromUrl", () => {
+  const id = "dQw4w9WgXcQ";
+  test("extracts from supported forms", async () => {
+    const { youtubeIdFromUrl } = await import("./embeds");
+    for (const u of [
+      `https://www.youtube.com/watch?v=${id}&t=3`,
+      `https://youtu.be/${id}`,
+      `https://www.youtube.com/embed/${id}`,
+      `https://youtube.com/shorts/${id}`,
+    ])
+      expect(youtubeIdFromUrl(u)).toBe(id);
+  });
+  test("rejects others", async () => {
+    const { youtubeIdFromUrl } = await import("./embeds");
+    expect(youtubeIdFromUrl("https://youtube.com/watch?v=short")).toBeNull();
+    expect(youtubeIdFromUrl("https://example.com/watch?v=dQw4w9WgXcQ")).toBeNull();
+    expect(youtubeIdFromUrl("nope")).toBeNull();
+  });
+});
