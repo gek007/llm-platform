@@ -154,8 +154,33 @@ describe("ChapterTest", () => {
     render(<ChapterTest testId={testId} />);
     await answerAll(user);
     await user.click(screen.getByRole("button", { name: "Submit" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("NO_ATTEMPTS_LEFT");
+    expect(await screen.findByRole("alert")).toHaveTextContent("No attempts left");
     await waitFor(() => expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled());
+  });
+
+  test("unknown errors show the generic message", async () => {
+    const user = userEvent.setup();
+    submit.mockRejectedValue(new Error("boom"));
+    render(<ChapterTest testId={testId} />);
+    await answerAll(user);
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong. Please try again.");
+  });
+
+  test("a reactive version change clears answers and disables Submit", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<ChapterTest testId={testId} />);
+    await answerAll(user);
+    expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
+    testData = {
+      ...base,
+      version: 3,
+      questions: [{ id: "n1", kind: "single", prompt: "New question", options: ["P", "Q"] }],
+    };
+    rerender(<ChapterTest testId={testId} />);
+    expect(screen.getByText("New question")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "P" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
   });
 
   test("Hebrew is RTL with dir=auto question text", () => {

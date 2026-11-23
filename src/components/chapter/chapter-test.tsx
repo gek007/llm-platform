@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { ConvexError } from "convex/values";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -25,15 +26,24 @@ type SubmitResult = {
 const optionClass =
   "flex cursor-pointer items-center gap-3 rounded-lg border border-line bg-surface px-3 py-2.5 text-sm transition-colors hover:border-line-strong";
 
+const ERROR_MESSAGES: Record<string, string> = {
+  NO_ATTEMPTS_LEFT: "No attempts left",
+  LOCKED: "This test is locked for your account",
+  UNAUTHENTICATED: "Sign in to take this test",
+  INVALID_ANSWERS: "Some answers were invalid. Please review and submit again.",
+  NOT_FOUND: "This test is no longer available",
+};
+
+function errorMessage(e: unknown): string {
+  if (e instanceof ConvexError && typeof e.data === "string" && e.data in ERROR_MESSAGES) {
+    return ERROR_MESSAGES[e.data];
+  }
+  return "Something went wrong. Please try again.";
+}
+
 export function ChapterTest({ testId }: { testId: Id<"chapterTests"> }) {
   const data = useQuery(api.tests.getForViewer, { testId });
   const viewer = useQuery(api.viewer.get);
-  const submitTest = useMutation(api.tests.submit);
-  const [answers, setAnswers] = useState<Answers>({});
-  const [result, setResult] = useState<SubmitResult | null>(null);
-  const [pending, setPending] = useState(false);
-  const [changed, setChanged] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   if (data === undefined || viewer === undefined) {
     return <div aria-busy="true" aria-label="Loading test" className="h-48 animate-pulse rounded-xl border border-line bg-surface" />;
@@ -55,6 +65,19 @@ export function ChapterTest({ testId }: { testId: Id<"chapterTests"> }) {
     return <p className="text-sm text-muted">This test is not available.</p>;
   }
 
+  // Keyed by version: a new version remounts the player, dropping stale answers and results.
+  return <TestPlayer key={data.version} testId={testId} data={data} />;
+}
+
+type TestData = NonNullable<FunctionReturnType<typeof api.tests.getForViewer>>;
+
+function TestPlayer({ testId, data }: { testId: Id<"chapterTests">; data: TestData }) {
+  const submitTest = useMutation(api.tests.submit);
+  const [answers, setAnswers] = useState<Answers>({});
+  const [result, setResult] = useState<SubmitResult | null>(null);
+  const [pending, setPending] = useState(false);
+  const [changed, setChanged] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const rtl = RTL_LANGUAGES.includes(data.language as Language);
   const dirProps = rtl ? { dir: "rtl" as const, lang: data.language } : { lang: data.language };
   const exhausted = !result && data.attemptsUsed >= data.maxAttempts;
@@ -65,7 +88,7 @@ export function ChapterTest({ testId }: { testId: Id<"chapterTests"> }) {
   }
 
   async function onSubmit() {
-    if (!data || pending || !complete) return;
+    if (pending || !complete) return;
     setPending(true);
     setError(null);
     setChanged(false);
@@ -76,7 +99,7 @@ export function ChapterTest({ testId }: { testId: Id<"chapterTests"> }) {
         setChanged(true);
         setAnswers({});
       } else {
-        setError(e instanceof ConvexError && typeof e.data === "string" ? e.data : "Something went wrong. Please try again.");
+        setError(errorMessage(e));
       }
     } finally {
       setPending(false);
