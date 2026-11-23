@@ -8,6 +8,7 @@ import { LessonMarkdown } from "@/components/markdown/lesson-markdown";
 import { LessonVideo } from "@/components/video/lesson-video";
 import type { api } from "../../../convex/_generated/api";
 import { CompleteToggle } from "./complete-toggle";
+import { LessonSources } from "./lesson-sources";
 import { LessonNav } from "./lesson-nav";
 import { LessonSidebar } from "./lesson-sidebar";
 import { LockedLesson } from "./locked-lesson";
@@ -22,7 +23,9 @@ type Props = {
 };
 
 export function LessonPlayer({ data, outline, completedIds, signedIn }: Props) {
-  const { course, lesson, locked, prev, next } = data;
+  // A deployment that predates the course engine returns no `language` or `sources`;
+  // default both so the page still renders against an older backend.
+  const { course, lesson, locked, prev, next, language = "en", sources = [] } = data;
   const returnTo = `/courses/${course.slug}/lessons/${lesson.slug}`;
   const completed = completedIds.includes(lesson._id);
   const body = "body" in lesson ? lesson.body : undefined;
@@ -67,8 +70,9 @@ export function LessonPlayer({ data, outline, completedIds, signedIn }: Props) {
               </div>
             ) : null}
             <div className="prose-lesson">
-              <LessonMarkdown source={stripLeadingTitle(body, lesson.title)} />
+              <LessonMarkdown source={stripLeadingTitle(body, lesson.title)} language={language} />
             </div>
+            <LessonSources sources={sources} />
             <div className="mt-10 border-t border-line pt-6">
               <CompleteToggle
                 lessonId={lesson._id}

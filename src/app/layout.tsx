@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Fraunces, Geist, Geist_Mono } from "next/font/google";
+import { Fraunces, Geist, Geist_Mono, Noto_Sans_Hebrew } from "next/font/google";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
 import { TutorWidget } from "@/components/tutor/tutor-widget";
@@ -10,7 +10,13 @@ import "./globals.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
-  subsets: ["latin"],
+  subsets: ["latin", "cyrillic"],
+});
+
+// Geist and Fraunces have no Hebrew glyphs; this is the fallback for Hebrew course content.
+const notoSansHebrew = Noto_Sans_Hebrew({
+  variable: "--font-noto-hebrew",
+  subsets: ["hebrew"],
 });
 
 const geistMono = Geist_Mono({
@@ -33,7 +39,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} ${notoSansHebrew.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <ClerkClientProvider>

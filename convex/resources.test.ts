@@ -1,0 +1,146 @@
+/// <reference types="vite/client" />
+// @vitest-environment edge-runtime
+import { convexTest } from "convex-test";
+import { describe, expect, it } from "vitest";
+import { api, internal } from "./_generated/api";
+import schema from "./schema";
+import { buildWriterBrief } from "../agents/course-builder/agent/lib/writer-brief";
+import { parseResourceBlock } from "../src/components/markdown/embeds";
+
+const modules = import.meta.glob(["./**/*.{ts,js}", "!./**/*.test.ts", "!./**/*.d.ts"]);
+const issuer = "https://example.clerk.accounts.dev";
+const makeT = () => convexTest(schema, modules);
+type T = ReturnType<typeof makeT>;
+const asUser = (t: T) => t.withIdentity({ subject: "user_1", issuer, name: "Ada" });
+const asAdmin = (t: T) => t.withIdentity({ subject: "admin_1", issuer, metadata: { role: "admin" } });
+
+async function seed(
+  t: T,
+  opts: { tier?: "free" | "pro"; status: "draft" | "published"; withCourse?: boolean },
+) {
+  return await t.run(async (ctx) => {
+    const courseId = await ctx.db.insert("courses", {
+      slug: "c", title: "C", summary: "s", description: "d", level: "beginner",
+      tier: opts.tier ?? "free", status: opts.status, tags: [], outcomes: [], order: 1,
+    });
+    const jobId = await ctx.db.insert("generationJobs", {
+      createdBy: "admin_1", topic: "x", language: "en", level: "beginner", length: "short",
+      status: "ready", createdAt: 0, updatedAt: 0,
+    });
+    const cid = opts.withCourse === false ? undefined : courseId;
+    const link = await ctx.db.insert("courseResources", {
+      jobId, courseId: cid, kind: "url", title: "Docs", url: "https://example.com/docs",
+      origin: "admin", readStatus: "read",
+    });
+    const storageId = await ctx.storage.store(new Blob(["pdf"]));
+    const pdf = await ctx.db.insert("courseResources", {
+      jobId, courseId: cid, kind: "pdf", title: "Sheet", storageId,
+      origin: "admin", readStatus: "read",
+    });
+    const text = await ctx.db.insert("courseResources", {
+      jobId, courseId: cid, kind: "text", title: "Notes", text: "secret notes",
+      origin: "admin", readStatus: "read",
+    });
+    return { link, pdf, text };
+  });
+}
+
+describe("resources.getForViewer", () => {
+  it("returns null for a learner when the course is a draft", async () => {
+    const t = makeT();
+    const { link } = await seed(t, { status: "draft" });
+    expect(await asUser(t).query(api.resources.getForViewer, { resourceId: link })).toBeNull();
+  });
+
+  it("returns the resource to an admin on a draft course", async () => {
+    const t = makeT();
+    const { link } = await seed(t, { status: "draft" });
+    expect(await asAdmin(t).query(api.resources.getForViewer, { resourceId: link })).toEqual({
+      title: "Docs", kind: "url", url: "https://example.com/docs",
+    });
+  });
+
+  it("resolves url and pdf for a signed-in learner on a published free course", async () => {
+    const t = makeT();
+    const { link, pdf } = await seed(t, { status: "published" });
+    expect(await asUser(t).query(api.resources.getForViewer, { resourceId: link })).toMatchObject({
+      kind: "url", url: "https://example.com/docs",
+    });
+    const res = await asUser(t).query(api.resources.getForViewer, { resourceId: pdf });
+    expect(res?.kind).toBe("pdf");
+    expect(res?.url).toEqual(expect.stringContaining("http"));
+  });
+
+  it("is locked for anonymous viewers and non-Pro learners on a pro course", async () => {
+    const t = makeT();
+    const { link } = await seed(t, { status: "published", tier: "pro" });
+    expect(await t.query(api.resources.getForViewer, { resourceId: link })).toBeNull();
+    expect(await asUser(t).query(api.resources.getForViewer, { resourceId: link })).toBeNull();
+  });
+
+  it("returns null for a resource without a course (non-admins) and for text resources", async () => {
+    const t = makeT();
+    const orphan = await seed(t, { status: "published", withCourse: false });
+    expect(await asUser(t).query(api.resources.getForViewer, { resourceId: orphan.link })).toBeNull();
+    expect(await asAdmin(t).query(api.resources.getForViewer, { resourceId: orphan.link })).not.toBeNull();
+    const t2 = makeT();
+    const { text } = await seed(t2, { status: "published" });
+    expect(await asUser(t2).query(api.resources.getForViewer, { resourceId: text })).toBeNull();
+  });
+
+  it("returns null for a malformed id", async () => {
+    const t = makeT();
+    expect(await asUser(t).query(api.resources.getForViewer, { resourceId: "nonsense" })).toBeNull();
+  });
+
+  it("returns null for non-http(s) urls", async () => {
+    const t = makeT();
+    const { link } = await seed(t, { status: "published" });
+    await t.run(async (ctx) => {
+      await ctx.db.patch(link, { url: "javascript:alert(1)" });
+    });
+    expect(await asUser(t).query(api.resources.getForViewer, { resourceId: link })).toBeNull();
+  });
+});
+
+describe("writer-brief blocks resolve for learners", () => {
+  it("every ```resource block the writer brief can emit resolves in getForViewer", async () => {
+    const t = makeT();
+    const jobId = await asAdmin(t).mutation(api.generation.createJob, {
+      topic: "Budgeting", language: "en", level: "beginner", length: "short",
+    });
+    const ids = await t.run(async (ctx) => {
+      const base = { jobId, origin: "admin" as const, readStatus: "read" as const };
+      return {
+        url: await ctx.db.insert("courseResources", { ...base, kind: "url", title: "Docs", url: "https://example.com/docs" }),
+        pdf: await ctx.db.insert("courseResources", {
+          ...base, kind: "pdf", title: "Sheet", storageId: await ctx.storage.store(new Blob(["%PDF"])),
+        }),
+        youtube: await ctx.db.insert("courseResources", {
+          ...base, kind: "youtube", title: "Talk", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", readStatus: "embed_only",
+        }),
+        text: await ctx.db.insert("courseResources", { ...base, kind: "text", title: "Notes", text: "Track spending." }),
+      };
+    });
+    const outline = {
+      chapters: [
+        { title: "One", goal: "g", subchapters: [{ title: "A", goal: "g", resourceIds: Object.values(ids) }] },
+      ],
+    };
+    await t.run((ctx) => ctx.db.patch(jobId, { status: "outline_ready", outline }));
+    const courseId = await asAdmin(t).mutation(api.generation.approveOutline, { jobId });
+    await t.run((ctx) => ctx.db.patch(courseId, { status: "published" }));
+
+    const brief = buildWriterBrief(await t.query(internal.engine.getJob, { jobId }), 1);
+    const blocks = [...brief.matchAll(/```resource\n(.*)\n```/g)].map((m) => {
+      const parsed = parseResourceBlock(m[1]);
+      if (!parsed.ok) throw new Error(`bad block ${m[1]}`);
+      return parsed.resourceId;
+    });
+    // Web pages and PDFs become blocks; YouTube is a ```youtube block; pasted text never is.
+    expect(new Set(blocks)).toEqual(new Set([ids.url, ids.pdf]));
+    for (const resourceId of blocks) {
+      expect(await asUser(t).query(api.resources.getForViewer, { resourceId })).not.toBeNull();
+    }
+  });
+});

@@ -2,9 +2,13 @@ import { isValidElement, type ComponentProps, type ReactElement, type ReactNode 
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
+import { RTL_LANGUAGES, type Language } from "../../../convex/lib/engineTypes";
 import { CodeBlock } from "./code-block";
+import { fenceLanguage, parseResourceBlock, parseYoutubeBlock } from "./embeds";
 import { parseQuiz } from "./quiz";
 import { QuizBlock } from "./quiz-block";
+import { ResourceCard } from "./resource-card";
+import { YoutubeEmbed } from "./youtube-embed";
 
 function nodeText(node: ReactNode): string {
   if (node == null || typeof node === "boolean") return "";
@@ -14,13 +18,13 @@ function nodeText(node: ReactNode): string {
   return "";
 }
 
-function QuizError({ message }: { message: string }) {
+function BlockError({ kind, message }: { kind: string; message: string }) {
   return (
     <div
       role="alert"
       className="my-6 rounded-xl border border-danger/50 bg-danger/10 p-4 text-sm text-danger"
     >
-      This quiz block is invalid ({message}).
+      This {kind} block is invalid ({message}).
     </div>
   );
 }
@@ -40,25 +44,38 @@ const shiftedHeadings = Object.fromEntries(
   }),
 ) as Components;
 
+function Pre({ children, rtl }: ComponentProps<"pre"> & { rtl?: boolean }) {
+  const child = Array.isArray(children) ? children[0] : children;
+  if (!isValidElement(child)) return <pre>{children}</pre>;
+  const code = child as ReactElement<{ className?: string; children?: ReactNode }>;
+  // remark-rehype sets `language-<first info token>`; other classes (e.g. hljs) are ignored.
+  const langClass = (code.props.className ?? "").split(/\s+/).find((c) => c.startsWith("language-"));
+  const language = fenceLanguage(langClass?.slice("language-".length)) ?? undefined;
+  const text = nodeText(code.props.children).replace(/\n$/, "");
+
+  if (language === "quiz") {
+    const parsed = parseQuiz(text);
+    return parsed.ok ? <QuizBlock quiz={parsed.quiz} /> : <BlockError kind="quiz" message={parsed.error} />;
+  }
+  if (language === "youtube") {
+    const parsed = parseYoutubeBlock(text);
+    return parsed.ok ? <YoutubeEmbed embed={parsed.embed} /> : <BlockError kind="youtube" message={parsed.error} />;
+  }
+  if (language === "resource") {
+    const parsed = parseResourceBlock(text);
+    return parsed.ok ? <ResourceCard resourceId={parsed.resourceId} /> : <BlockError kind="resource" message={parsed.error} />;
+  }
+  const block = (
+    <CodeBlock code={text} language={language}>
+      {code.props.children}
+    </CodeBlock>
+  );
+  return rtl ? <div dir="ltr">{block}</div> : block;
+}
+
 const components: Components = {
   ...shiftedHeadings,
-  pre({ children }) {
-    const child = Array.isArray(children) ? children[0] : children;
-    if (!isValidElement(child)) return <pre>{children}</pre>;
-    const code = child as ReactElement<{ className?: string; children?: ReactNode }>;
-    const language = /language-([\w-]+)/.exec(code.props.className ?? "")?.[1];
-    const text = nodeText(code.props.children).replace(/\n$/, "");
-
-    if (language === "quiz") {
-      const parsed = parseQuiz(text);
-      return parsed.ok ? <QuizBlock quiz={parsed.quiz} /> : <QuizError message={parsed.error} />;
-    }
-    return (
-      <CodeBlock code={text} language={language}>
-        {code.props.children}
-      </CodeBlock>
-    );
-  },
+  pre: Pre,
   a({ href, children, ...props }) {
     const external = typeof href === "string" && /^https?:\/\//.test(href);
     return (
@@ -73,14 +90,36 @@ const components: Components = {
   },
 };
 
-/** Renders lesson markdown (GFM). Works on the server and in client components (e.g. admin preview). */
-export function LessonMarkdown({ source }: { source: string }) {
+// Inside an RTL container paragraphs and list items pick their own direction (mixed Hebrew/English)
+// and code is always left-to-right.
+const rtlComponents: Components = {
+  ...components,
+  p: ({ node, ...props }) => {
+    void node;
+    return <p dir="auto" {...props} />;
+  },
+  li: ({ node, ...props }) => {
+    void node;
+    return <li dir="auto" {...props} />;
+  },
+  pre: ({ node, ...props }) => {
+    void node;
+    return <Pre rtl {...props} />;
+  },
+};
+
+/**
+ * Renders lesson markdown (GFM). Works on the server and in client components (e.g. admin preview).
+ * `language="he"` renders the content right-to-left; any other value renders as before.
+ */
+export function LessonMarkdown({ source, language }: { source: string; language?: Language }) {
+  const rtl = language !== undefined && RTL_LANGUAGES.includes(language);
   return (
-    <div className="prose-lesson">
+    <div className="prose-lesson" {...(rtl ? { dir: "rtl", lang: language } : {})}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[[rehypeHighlight, { detect: false, ignoreMissing: true }]]}
-        components={components}
+        components={rtl ? rtlComponents : components}
       >
         {source}
       </ReactMarkdown>

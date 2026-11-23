@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { completionFor } from "./lib/completion";
 import { getIdentity, getViewerState, requireUser } from "./lib/auth";
 
 export const enroll = mutation({
@@ -58,24 +59,17 @@ export const listMine = query({
       enrollments.map(async (enrollment) => {
         const course = await ctx.db.get(enrollment.courseId);
         if (!course || (course.status !== "published" && !viewer.admin)) return null;
-        const lessons = await ctx.db
-          .query("lessons")
-          .withIndex("by_course_order", (q) => q.eq("courseId", course._id))
-          .collect();
-        const progress = await ctx.db
-          .query("lessonProgress")
-          .withIndex("by_user_course", (q) =>
-            q.eq("userId", userId).eq("courseId", course._id),
-          )
-          .collect();
-        const done = new Set(progress.map((p) => p.lessonId));
-        const completedCount = lessons.filter((l) => done.has(l._id)).length;
+        const c = await completionFor(ctx, userId, course._id);
+        const { lessons, done } = c;
         const next = lessons.find((l) => !done.has(l._id)) ?? lessons[0];
         return {
           ...course,
           enrolledAt: enrollment.enrolledAt,
           lessonCount: lessons.length,
-          completedCount,
+          completedCount: c.lessonsDone,
+          testsPassed: c.testsPassed,
+          testCount: c.testCount,
+          complete: c.complete,
           nextLessonSlug: next?.slug ?? null,
         };
       }),

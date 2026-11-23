@@ -23,6 +23,19 @@ beforeEach(() => {
 });
 
 describe("CourseForm", () => {
+  test("edits the course language and saves it", async () => {
+    const user = userEvent.setup();
+    const course = {
+      _id: "c1", _creationTime: 1, slug: "x", title: "X", summary: "s", description: "",
+      level: "beginner", tier: "free", status: "draft", tags: [], outcomes: [], order: 3, language: "he",
+    } as never;
+    render(<CourseForm course={course} />);
+    expect(screen.getByLabelText("Language")).toHaveValue("he");
+    await user.selectOptions(screen.getByLabelText("Language"), "ru");
+    await user.click(screen.getByRole("button", { name: "Save course" }));
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ courseId: "c1", language: "ru" }));
+  });
+
   test("validates required fields and slug format without calling the mutation", async () => {
     const user = userEvent.setup();
     render(<CourseForm />);

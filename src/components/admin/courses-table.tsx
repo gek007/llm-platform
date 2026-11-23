@@ -11,7 +11,12 @@ export function CoursesTable() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-display text-3xl">Courses</h1>
-        <Button render={<Link href="/admin/courses/new" />}>New course</Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" render={<Link href="/admin/generate" />}>
+            Generate with AI
+          </Button>
+          <Button render={<Link href="/admin/courses/new" />}>New course</Button>
+        </div>
       </div>
       {courses === undefined ? (
         <p className="text-muted">Loading courses...</p>

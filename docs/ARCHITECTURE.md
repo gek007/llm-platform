@@ -17,7 +17,7 @@ Living document. Update it whenever a step changes the stack, structure, or tool
 | 8 | LMS features ([design](superpowers/specs/2026-11-21-lms-features-design.md)): Clerk + Convex in the app, schema and seed, landing and custom pricing (Clerk Billing), course catalog, lesson player (Mux, markdown, quizzes, progress), dashboard, admin panel with Mux uploads, Pro-only AI tutor widget with Clerk-verified auth | Done | `3d802b1` |
 | 9 | Full-page LMS knowledge-graph backdrop on `/`, clickable Mux preview video in `HeroDemo`, custom signed Mux videos for TypeScript Foundations lessons 1–2, Vercel Production deployment | Done | `e507a09` |
 | 10 | Hands-on labs POC on E2B ([design](superpowers/specs/2026-11-23-labs-poc-design.md)): lab image with terminal (ttyd) and VS Code (code-server), `LabProvider` (E2B, Docker, fake), lab sessions and exercise checks in Convex, lab page | Planned | — |
-| 11 | Course engine demo ([design](superpowers/specs/2026-11-23-course-engine-design.md)): `course-builder` eve agent generates a course from a topic and resources (URL, PDF, YouTube embed, text) in English, Hebrew or Russian; chapters/subchapters, slide decks, practice quizzes, recorded chapter tests, sources; outline approval, live progress, admin review and results | Planned | — |
+| 11 | Course engine demo ([design](superpowers/specs/2026-11-23-course-engine-design.md)): `course-builder` eve agent generates a course from a topic and resources (URL, PDF, YouTube embed, text) in English, Hebrew or Russian; chapters/subchapters, slide decks, practice quizzes, recorded chapter tests, sources; outline approval, live progress, admin review and results | Built (all 22 build tasks reviewed; in-process pipeline test from generation to learner completion; tiny-course agent eval passes). Pending: live demo run with a signed-in admin against a pushed Convex deployment, and the production `convex/` push before `main` is pushed (see "Merging and deploying course-engine") | — |
 
 Production (<https://llm-platform-xi.vercel.app>) runs the full Learnly LMS app (backed by the Clerk dev instance and Convex dev deployment `hallowed-iguana-534` until a custom domain and Convex prod deploy key are configured). Each area has a reference page in `docs/features/`:
 
@@ -26,6 +26,7 @@ Production (<https://llm-platform-xi.vercel.app>) runs the full Learnly LMS app 
 | Foundation | [foundation.md](features/foundation.md) | Providers, `src/proxy.ts`, Convex schema/API/seed, claims, header/footer, markdown + quiz renderer, theme |
 | Landing and pricing | [landing.md](features/landing.md) | `/`, `/pricing`, Pro plan ID lookup, `CheckoutButton` states |
 | Courses | [course.md](features/course.md) | `/courses`, `/courses/[slug]`, lesson player, `/dashboard` |
+| Course engine | [course-engine.md](features/course-engine.md) | Chaptered courses: chapter page, slide deck, chapter tests, completion rule, RTL, `digital-safety-basics` seed; admin generation (wizard, live view, outline approval, engine API, watchdog) |
 | Admin | [admin.md](features/admin.md) | `/admin/**`, `convex/admin.ts`, Mux upload/sync/webhook |
 | AI tutor | [tutor.md](features/tutor.md) | `agents/learnly/`, `src/components/tutor/`, Clerk auth on the agent channel |
 
@@ -131,6 +132,15 @@ Environment variables on Vercel (`vercel env ls`):
 
 Deployments normally come from Git pushes. `vercel deploy` from this folder creates a preview deployment from the working tree, or a production one with `--prod`. `.vercelignore` keeps CLI uploads to what's in Git; Vercel never uploads `.env.local`, `.vercel/`, `.next/` or `node_modules/`.
 
+### Merging and deploying course-engine
+
+The `feat/course-engine` branch changes both `convex/` and the Next.js app, and a Git push deploys only the app. So:
+
+1. **Push `convex/` before (or together with) `main`.** Before, or at the same time as, pushing `main` to GitHub/Vercel, the owner pushes `convex/` to the Convex deployment production reads (today `hallowed-iguana-534`; `tremendous-firefly-113` after the prod cutover above). The schema change is additive (new tables, new optional fields), so existing documents stay valid. The lesson page tolerates a deployment that predates the branch (`LessonPlayer` defaults missing `sources` and `language`), but the chapter, test, admin and generator pages need the new functions.
+2. **Seeding is optional.** `npx convex run seed:run` is idempotent; it adds and publishes the free Hebrew demo course `digital-safety-basics` with its chapters, decks and tests.
+3. **Engine secrets only where the engine should run.** `COURSE_ENGINE_SECRET` (Convex deployment and app environment) and `COURSE_BUILDER_CHANNEL_SECRET` / `COURSE_BUILDER_URL` / `COURSE_ENGINE_MODE` (app environment) are needed only if course generation should run against that deployment. Without them the rest of the site works and `/engine/*` fails closed.
+4. **e2e on `main`.** `npm run test:e2e` on `main` needs the deployment in `.env.local` pushed and seeded: `e2e/chapters.spec.ts` opens `digital-safety-basics`.
+
 ## Environment
 
 | Resource | Name / ID | Dashboard |
@@ -150,6 +160,10 @@ Deployments normally come from Git pushes. `vercel deploy` from this folder crea
 | `CONVEX_DEPLOYMENT` | Convex CLI (`npx convex dev`, MCP server) | `npx convex dev` |
 | `NEXT_PUBLIC_CONVEX_URL` | `ConvexReactClient` / server fetches | `npx convex dev` |
 | `NEXT_PUBLIC_CONVEX_SITE_URL` | Convex HTTP actions (e.g. webhooks) | `npx convex dev` |
+| `COURSE_ENGINE_SECRET` | Bearer secret for the Convex HTTP `/engine/*` surface; the same value is on the Convex deployment and read by the Next.js routes/engine. Generated with `openssl rand -hex 32`, never printed |
+| `COURSE_ENGINE_MODE` | `fake` or `live` (default `live`): fake runs the canned engine instead of the `course-builder` agent |
+| `COURSE_BUILDER_CHANNEL_SECRET` | HS256 key for Next.js -> `course-builder` agent JWTs (`src/lib/course-builder/eve-client.ts` signs, `agents/course-builder/agent/channels/eve.ts` verifies). Generated with `openssl rand -hex 32`, never printed |
+| `COURSE_BUILDER_URL` | Optional. Base URL of the agent's `/v1/*` routes for live dispatch; default `http://127.0.0.1:2001/eve` (`npm run dev:course-builder`) |
 | `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` | Local copy of the Mux access token kept on the Convex deployment (server only) | Mux Dashboard → Settings → Access Tokens |
 | `VERCEL_OIDC_TOKEN` | Vercel services called from local code (unused so far); expires after about 12 hours | `vercel link`, refreshed by `vercel env pull` |
 
@@ -158,17 +172,19 @@ Convex deployment env vars (`npx convex env list`), read by Convex functions:
 | Key | Value |
 | --- | ----- |
 | `CLERK_FRONTEND_API_URL` | Clerk Frontend API URL of the dev instance (`https://pro-giraffe-8779.clerk.accounts.dev`), read by `convex/auth.config.ts`. Clerk's guide uses this name; Convex's older docs call it `CLERK_JWT_ISSUER_DOMAIN`. |
+| `COURSE_ENGINE_SECRET` | Authenticates `POST /engine/*` HTTP actions (`convex/lib/engineAuth.ts`); fails closed when unset |
 | `MUX_SIGNING_KEY_ID`, `MUX_SIGNING_PRIVATE_KEY` | Mux signing key of the `LMS-Platform` development environment (private key base64, as Mux returns it), used by `convex/playback.ts` to sign playback tokens. Set only on the Convex deployment (piped into `npx convex env set`); never in `.env.local`, files or Vercel. Production needs its own key in the production Mux environment |
 | `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` | Mux access token for the `LMS-Platform` development environment (Video, Data, Robots and System, read and write), for server-side Mux calls from Convex actions. Used by `convex/mux.ts` (uploads, sync, removal). The same pair is in `.env.local`; it never goes into `NEXT_PUBLIC_*` variables or Vercel unless a Next.js route handler calls Mux |
 
 Setting up a new machine: `clerk auth login && clerk link --app app_3MQ6Ah3aicMxqGdRvLxQwJi2ljf && clerk env pull --file .env.local`, then `npx convex dev` (select the existing `llm-platform` project), then `vercel login && vercel link --project llm-platform --scope gek007s-projects`. `scripts/check-dev-tooling.sh` fails if `.env.local` is missing a key listed in `.env.example` or the folder isn't linked to the Vercel project.
 
-Daily development runs two processes, started together by `npm run dev:all`:
+Daily development runs three processes, started together by `npm run dev:all`:
 
 - `npm run dev`: Next.js on port 3000 (or `PORT`).
 - `npm run dev:convex` (`convex dev`): watches `convex/`, typechecks it, regenerates `convex/_generated/` and pushes functions, schema and `auth.config.ts` to the dev deployment on every save. Add `-- --once` to push once and exit.
+- `npm run dev:course-builder` (`EVE_DEV_STATE_DIR=.eve-dispatch eve dev --agent course-builder --resume --no-ui --port 2001`): the course engine agent. `--resume` keeps job sessions alive across restarts; port 2001 leaves 2000 to `npm run dev:learnly`. Live dispatch calls it at `COURSE_BUILDER_URL` (default `http://127.0.0.1:2001/eve`). `next dev` (via `withEve`) also starts its own copy of every workspace agent for the `/eve/<name>/v1/*` proxy; the route doesn't use that copy. The two copies would otherwise share `agents/course-builder/.eve/` (dev-server state, runtime snapshots, local workflow data), and eve refuses a second flagged dev server there ("A dev server is already running for this eve agent"), so this one keeps its dev state in the git-ignored `agents/course-builder/.eve-dispatch/`.
 
-`dev:all` uses `concurrently`, which prefixes each output line with `[next]` or `[convex]`. If either process exits, it stops the other, and Ctrl+C stops both. Clerk, Vercel and Mux are hosted services, so nothing runs locally for them. Next.js allows only one dev server per project folder, so stop any running `npm run dev` before starting `dev:all`.
+`dev:all` uses `concurrently`, which prefixes each output line with `[next]`, `[convex]` or `[course-builder]`. If any process exits, it stops the others, and Ctrl+C stops all. Clerk, Vercel and Mux are hosted services, so nothing runs locally for them. Next.js allows only one dev server per project folder, so stop any running `npm run dev` before starting `dev:all`.
 
 Production credentials (a Clerk production instance, a Convex prod deploy key, a Mux production token) are not created yet. They go into the service that reads them (Vercel's Production environment variables or the Convex prod deployment), never into files.
 
@@ -225,11 +241,29 @@ agents/                       eve agent workspace (each subfolder is a named age
       lib/                    Clerk verification, viewer context, Convex client helpers
       tools/                  `list_courses`, `get_course_details`, `get_my_progress`, `get_lesson`, `show_quiz` + tests
     evals/                    Baseline eve evals (`evals.config.ts`, `smoke.eval.ts`)
+  course-builder/             Course engine agent (`claude-opus-5-5`, `reasoning: "high"`, `defaultTools: false`)
+    agent/
+      agent.ts instructions.md   Model config; role, commands, phases, language, source integrity, quality bar
+      channels/eve.ts         `jwtHmac` service auth only (`COURSE_BUILDER_CHANNEL_SECRET`, `sub: course-builder-route`); 401 for everything without the secret. Walk built by `lib/channel-auth.ts`, which adds `localDev()` only for the local server `eve eval` starts (`EVE_EVALUATION=1` and `EVE_EVALUATION_RUN_ID` set; never set `EVE_EVALUATION` in `.env.local`)
+      lib/engine-client.ts    Typed `/engine/*` client (`createEngineClient`, `engineFromEnv`, `EngineError`), built on `src/lib/course-builder/engine-http.ts`
+      lib/command.ts          Re-exports `parseCommand` from `src/lib/course-builder/commands.ts`
+      lib/safe-fetch.ts       SSRF-safe fetch (`guarded-fetch`: https only, private/metadata IPs refused at connect time, 3 redirects, byte caps, Content-Type and `%PDF` checks)
+      lib/report-progress.ts  `makeReportProgressTool`, shared by the root agent and the chapter-writer
+      lib/                    Also `tool-result.ts` (EngineError → `{ ok: false, message }`), `outline.ts` (length-preset check), `youtube.ts` (oEmbed), `html-text.ts`
+      tools/                  Research: `get_job`, `read_resource`, `youtube_info`, `web_search`/`web_fetch` (eve built-ins), `save_sources`, `save_outline`, `report_progress`; write: `write_course` and `regenerate` (workflow tools), `finish_job`, `fail_job` + tests
+      lib/write-chapters.ts   The write fan-out shared by `write_course` and `regenerate`: `"use step"` engine calls (`loadJob`, `loadChapterContent`, `logProgress`), `runWriter` (one `ctx.agent("chapter-writer").send(...)`), `writeChapters` (`Promise.all`, one `chapter` event per writer, `{ chapters, failed }`), `missingFromRefusal`
+      lib/regenerate.ts       The "Only redo <target>: <instruction>" / "Regenerate the chapter" sections and the chapter's saved content (`savedContentSection`) appended to a writer brief
+      lib/writer-brief.ts     `buildWriterBrief(job, chapterOrder)` (the chapter-writer's message) and `writerOutputSchema` (its report)
+      subagents/chapter-writer/  Writes one chapter (same model and effort, `tool: false`): `save_subchapter`, `save_deck`, `save_test`, `report_progress` (the root tool re-exported) + tests
+    evals/                    `tiny-course.eval.ts` (1-chapter write end to end, costs tokens); `evals.config.ts` setup serves `lib/fake-engine.ts` (in-memory `/engine/*` with the real validators) and points `CONVEX_SITE_URL` at it
 convex/                       Convex backend functions; convex/_generated/ is written by `npx convex dev`
   auth.config.ts              Trusts Clerk session tokens (see Clerk ↔ Convex auth)
   schema.ts                   Tables and indexes (see Data model)
   lib/                        auth.ts (identity, isAdmin, isPro), access.ts (canAccessLesson), seedData.ts
   courses.ts lessons.ts …     Public and student functions; admin.ts, mux.ts and playback.ts ("use node"), muxData.ts, playbackData.ts, http.ts for admin and video
+  generation.ts engine.ts     Course engine: admin job API (create, resources, outline, approve, sources), engine read (`getJob`, `getChapterContent`) and write ops behind `/engine/*`
+  crons.ts                    Watchdog: fails stalled generation jobs every 5 minutes
+  lib/jobs.ts sourceScan.ts engineAuth.ts   Job transitions/events/outline validation, source-integrity scan, bearer check for `/engine/*`
   *.test.ts                   convex-test unit tests (never deployed: two dots in the name)
 docs/ARCHITECTURE.md          This file
 docs/features/                Reference page per feature area (see Status)
@@ -242,16 +276,18 @@ public/                       Static assets
 scripts/agent-deployment.sh   Gives an agent worktree its own Convex dev deployment and scoped deploy key (see Agent deployments)
 scripts/check-dev-tooling.sh  Verifies CLIs, MCP config, skills, .env.local, Vercel link; --online adds MCP, Clerk ↔ Convex, Mux sign-in and Vercel env checks
 src/
-  app/                        App Router routes only: /, /pricing, /courses/**, /dashboard, /admin/**, /learnly, /sign-in, /sign-up
+  app/                        App Router routes only: /, /pricing, /courses/** (incl. `/courses/[slug]/chapters/[chapterSlug]` and `.../test`), /dashboard, /admin/** (incl. `/admin/generate` wizard and `/admin/generate/[jobId]` live view), `/api/course-builder/[action]` (start, approve, regenerate, resume), /learnly, /sign-in, /sign-up
   proxy.ts                    clerkMiddleware; optimistic gate for /dashboard, /admin, /learnly (pages re-check)
   components/
     ui/                       App-styled UI SDK wrappers (one file per component, e.g. accordion.tsx)
     layout/                   Site header and footer
     providers/                ClerkClientProvider, ConvexClientProvider (stores the user on sign-in)
+    chapter/                  ChapterPage/ChapterView, SlideDeck, Slide, ChapterTest (course engine)
     markdown/                 LessonMarkdown, CodeBlock, QuizBlock, parseQuiz
     landing/ pricing/         Landing sections, full-page LMS knowledge-graph backdrop, hero animation + Mux preview player, pricing plans, Pro plan ID lookup
     course/ lesson/ video/    Catalog, course detail, lesson player, Mux player wrapper, dashboard
-    admin/                    Admin forms, lessons list, Mux video panel
+    admin/                    Admin forms, lessons list, Mux video panel, course-engine review (chapters panel, deck and test editors, regenerate dialog, results table)
+    generate/                 Course generation wizard, resource inputs, live view, outline editor, jobs list
     tutor/                    Floating AI tutor widget and chat
   config/                     Static app config (site.ts: name, description)
   hooks/                      Shared client hooks (`use-*.ts`, "use client")
@@ -284,20 +320,29 @@ Defined in `convex/schema.ts`; seed data in `convex/lib/seedData.ts` (`npx conve
 | Table | Fields | Indexes |
 | ----- | ------ | ------- |
 | `users` | `clerkId`, `name`, `email?`, `imageUrl?`, `plan?` | `by_clerkId` |
-| `courses` | `slug`, `title`, `summary`, `description` (markdown), `level`, `tier` (`free` \| `pro`), `status` (`draft` \| `published` \| `archived`), `tags`, `outcomes`, `coverImageUrl?`, `order` | `by_slug`, `by_status_order` |
-| `lessons` | `courseId`, `slug`, `title`, `summary`, `body` (markdown), `order`, `durationMinutes`, `isFreePreview`, `muxUploadId?`, `muxAssetId?`, `muxPlaybackId?`, `videoStatus?` | `by_course_order`, `by_course_slug`, `by_muxAssetId`, `by_muxUploadId` |
+| `courses` | `slug`, `title`, `summary`, `description` (markdown), `level`, `tier` (`free` \| `pro`), `status` (`draft` \| `published` \| `archived`), `tags`, `outcomes`, `coverImageUrl?`, `order`, `language?` (`en` \| `he` \| `ru`, default `en`), `generationJobId?` | `by_slug`, `by_status_order` |
+| `lessons` | `courseId`, `slug`, `title`, `summary`, `body` (markdown), `order`, `durationMinutes`, `isFreePreview`, `muxUploadId?`, `muxAssetId?`, `muxPlaybackId?`, `videoStatus?`, `chapterId?`, `sourceIds?` | `by_course_order`, `by_course_slug`, `by_muxAssetId`, `by_muxUploadId` |
 | `enrollments` | `userId`, `courseId`, `enrolledAt` | `by_user`, `by_user_course`, `by_course` |
 | `lessonProgress` | `userId`, `courseId`, `lessonId`, `completedAt` | `by_user_course`, `by_user_lesson`, `by_course`, `by_lesson` |
+| `chapters` | `courseId`, `slug`, `title`, `summary`, `order` | `by_course_order`, `by_course_slug` |
+| `slideDecks` | `courseId`, `chapterId`, `slides[]`, `updatedAt` (one row per chapter) | `by_chapter` |
+| `chapterTests` | `courseId`, `chapterId`, `version`, `passPercent`, `maxAttempts`, `questions[]` (one row per chapter; edits bump `version` in place) | `by_chapter`, `by_course` |
+| `testAttempts` | `userId`, `courseId`, `testId`, `testVersion`, `answers`, `scorePercent`, `passed`, `submittedAt` | `by_user_test`, `by_test`, `by_user_course` |
+| `courseResources` | `jobId`, `courseId?`, `kind`, `title`, `url?`, `storageId?`, `text?`, `origin` (`admin` \| `engine`), `readStatus` | `by_job`, `by_course` |
+| `generationJobs` | `createdBy`, `topic`, `language`, `level`, `length`, `audience?`, `notes?`, `status`, `eveSessionId?`, `dispatchError?`, `pendingCommand?` (last dispatched command, re-sent by Resume), `outline?`, `courseId?`, `error?`, `usage?` | see `convex/schema.ts` |
+| `generationEvents` | `jobId`, `at`, `kind`, `message`, `chapterOrder?` | `by_job_at` |
+| `generationSources` | `jobId`, `url`, `title`, `kind`, `resourceId?`, `excerpt?` | `by_job`, `by_job_url` |
 
 | Module | Functions |
 | ------ | --------- |
-| `courses` | `listPublished`, `getBySlug` (outline with `locked`, no bodies) |
-| `lessons` | `getForViewer` (body and playback ID only when unlocked; `prev`/`next`) |
+| `courses` | `listPublished`, `getBySlug` (outline with `locked`, no bodies; `language` and `chapters` with `hasDeck`/`test`) |
+| `lessons` | `getForViewer` (body and playback ID only when unlocked; `prev`/`next`; `language`, `chapter`, `sources`) |
+| `chapters` | `getForViewer` (deck only when unlocked, lessons, test summary with best score and attempts, `prev`/`next`) |
 | `enrollments` | `enroll` (`PRO_REQUIRED` error), `isEnrolled`, `listMine` |
 | `progress` | `setComplete`, `forCourse` |
 | `users`, `viewer` | `store` (upsert on sign-in), `get` (`signedIn`, `isAdmin`, `isPro`, `user`) |
 | `playback` | `getLessonTokens` (action): signed Mux tokens after an access check; `null` when locked or no ready video |
-| `admin`, `mux` | Admin-only CRUD, lesson reorder, cascading course delete, Mux direct upload, `syncLessonVideo`, `removeVideo` |
+| `admin`, `mux` | Admin-only CRUD, lesson reorder, cascading course delete (lessons, enrollments, progress, chapters, decks, tests and attempts, resources and their PDF blobs), Mux direct upload, `syncLessonVideo`, `removeVideo` |
 | `http` | `POST /mux/webhook` (signature-verified, fails closed without `MUX_WEBHOOK_SECRET`) |
 
 Lesson markdown supports GFM, highlighted code blocks with a copy button, and quizzes as fenced `quiz` blocks with a JSON body (`{ "question", "options", "answer", "explanation" }`). Markdown headings render one level down (the page owns the `<h1>`), and the lesson player drops a leading heading that repeats the lesson title.
@@ -308,10 +353,11 @@ Lesson markdown supports GFM, highlighted code blocks with a copy button, and qu
 | ------- | ------------ |
 | `npm run typecheck` | `next typegen` (route types such as `LayoutProps`) then `tsc --noEmit` |
 | `npm run lint` | ESLint |
-| `npm test` | Vitest once (`src/**/*.test.{ts,tsx}`, `convex/**/*.test.ts`, `agents/**/*.test.ts`; 174 tests in 37 files); `npm run test:watch` for watch mode |
-| `npm run test:e2e` | Playwright; builds Learnly and Next.js and starts a production server on `PORT` (default 3100); 23 tests, signed-out flows only. Outside CI it reuses a server already listening on that port, so stop any `next start` there first or you test a stale build |
+| `npm test` | Vitest once (`src/**/*.test.{ts,tsx}`, `convex/**/*.test.ts`, `agents/**/*.test.ts`; 599 tests in 80 files); `npm run test:watch` for watch mode |
+| `npm run test:e2e` | Playwright; builds Learnly, the course-builder agent and Next.js and starts a production server on `PORT` (default 3100); 24 tests, signed-out flows only. Outside CI it reuses a server already listening on that port, so stop any `next start` there first or you test a stale build |
 | `npm run info:learnly` | Inspects eve discovery, tools, and diagnostics for `agents/learnly/` |
 | `npm run eval:learnly` | Runs `agents/learnly/evals/` against a local Learnly server (needs live model credentials) |
+| `npm run info:course-builder`, `npm run eval:course-builder` | The same for `agents/course-builder/`; its eval writes a 1-chapter course against an in-memory fake engine (real Opus calls, see [course-engine.md](features/course-engine.md#write-phase-and-regenerate-course-builder-agent) for cost) |
 | `scripts/check-dev-tooling.sh [--online]` | Dev tooling and service configuration (see Repository layout) |
 
 Conventions:

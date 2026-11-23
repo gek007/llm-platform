@@ -79,7 +79,7 @@ function CourseDetailLoaded({ course }: { course: Course }) {
               About this course
             </h2>
             <div className="prose-lesson mt-4">
-              <LessonMarkdown source={course.description} />
+              <LessonMarkdown source={course.description} language={course.language} />
             </div>
           </section>
           {course.outcomes.length > 0 ? (
@@ -104,7 +104,12 @@ function CourseDetailLoaded({ course }: { course: Course }) {
           <h2 id="outline-heading" className="mb-4 font-display text-2xl font-semibold">
             Lessons
           </h2>
-          <LessonOutline courseSlug={course.slug} lessons={course.lessons} completedIds={completed} />
+          <LessonOutline
+            courseSlug={course.slug}
+            lessons={course.lessons}
+            completedIds={completed}
+            chapters={course.chapters}
+          />
         </section>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
+import { findUnknownRefs } from "../../../convex/lib/sourceScan";
 import { LessonMarkdown } from "./lesson-markdown";
 
 const source = [
@@ -52,5 +53,78 @@ describe("LessonMarkdown", () => {
     render(<LessonMarkdown source={source} />);
     expect(screen.getByRole("radiogroup", { name: "Q?" })).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent(/quiz block is invalid/i);
+  });
+
+  test("renders a youtube block as a privacy-enhanced iframe", () => {
+    const md = '```youtube\n{"videoId":"dQw4w9WgXcQ","title":"Intro video","start":12}\n```';
+    render(<LessonMarkdown source={md} />);
+    const frame = screen.getByTitle("Intro video");
+    expect(frame.tagName).toBe("IFRAME");
+    expect(frame).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?start=12");
+  });
+
+  test("invalid youtube and resource blocks show the same inline alert as quizzes", () => {
+    const md = [
+      '```youtube\n{"videoId":"bad","title":"T"}\n```',
+      "```resource\n{ nope\n```",
+    ].join("\n\n");
+    render(<LessonMarkdown source={md} />);
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts).toHaveLength(2);
+    expect(alerts[0]).toHaveTextContent(/youtube block is invalid/i);
+    expect(alerts[1]).toHaveTextContent(/resource block is invalid/i);
+  });
+
+  test("language he renders an RTL container with auto paragraphs and LTR code", () => {
+    const md = "שלום עולם\n\n- פריט\n\n```ts\nconst x = 1;\n```";
+    const { container } = render(<LessonMarkdown source={md} language="he" />);
+    const root = container.firstElementChild as HTMLElement;
+    expect(root).toHaveAttribute("dir", "rtl");
+    expect(root).toHaveAttribute("lang", "he");
+    expect(screen.getByText("שלום עולם")).toHaveAttribute("dir", "auto");
+    expect(screen.getByText("פריט").closest("li")).toHaveAttribute("dir", "auto");
+    expect(container.querySelector("pre")?.closest("[dir]")).toHaveAttribute("dir", "ltr");
+  });
+
+  test("without language the container has no direction attributes", () => {
+    const { container } = render(<LessonMarkdown source="hi" />);
+    expect(container.firstElementChild).not.toHaveAttribute("dir");
+  });
+
+  test("in he, only real code blocks are forced LTR", () => {
+    const md = [
+      '```quiz\n{ "question": "Q?", "options": ["A", "B"], "answer": 0 }\n```',
+      "```ts\nconst x = 1;\n```",
+    ].join("\n\n");
+    render(<LessonMarkdown source={md} language="he" />);
+    expect(screen.getByRole("radiogroup", { name: "Q?" }).closest('[dir="ltr"]')).toBeNull();
+    expect(document.querySelector("pre")?.closest('[dir="ltr"]')).not.toBeNull();
+  });
+});
+
+// R4 parity: the renderer and the engine's source scanner must agree on which fences are embeds,
+// otherwise a fence the renderer embeds could skip the scanner's reference check.
+describe("fence language parity with the source scanner", () => {
+  const VIDEO = "aaaaaaaaaaa";
+  const noRefs = { urls: new Set<string>(), videoIds: new Set<string>(), resourceIds: new Set<string>() };
+  const cases: [info: string, embeds: boolean][] = [
+    ["youtube", true],
+    ['youtube {"start":1}', true],
+    ["youtube\t", true],
+    ["youtube.x", false],
+    ["x-youtube", false],
+    ["YOUTUBE", false],
+    ["language-youtube", false],
+    [".language-youtube", false],
+    ["x.language-youtube", false],
+  ];
+  test.each(cases)("info %j: renderer and scanner agree (embed: %s)", (info, embeds) => {
+    const md = "```" + info + "\n" + JSON.stringify({ videoId: VIDEO, title: "T" }) + "\n```";
+    const { container, unmount } = render(<LessonMarkdown source={md} />);
+    const rendered = container.querySelector("iframe") !== null;
+    unmount();
+    const scanned = findUnknownRefs(md, noRefs).includes(`youtube:${VIDEO}`);
+    expect(rendered).toBe(embeds);
+    expect(scanned).toBe(embeds);
   });
 });

@@ -10,12 +10,16 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "./admin-utils";
 import { StatusMessage } from "./admin-fields";
+import { Tabs, TabsList, TabsPanel, TabsTab } from "@ui-sdk/react/tabs";
+import { ChaptersPanel } from "./chapters-panel";
 import { CourseForm } from "./course-form";
 import { LessonsList } from "./lessons-list";
+import { ResultsTable } from "./results-table";
 import { useAdminQuery } from "./use-admin-query";
 
 export function CourseEditor({ courseId }: { courseId: Id<"courses"> }) {
   const data = useAdminQuery(api.admin.getCourse, { courseId });
+  const chapters = useAdminQuery(api.admin.listChapters, { courseId });
   const router = useRouter();
   const deleteCourse = useMutation(api.admin.deleteCourse);
   const removeVideo = useAction(api.mux.removeVideo);
@@ -58,7 +62,33 @@ export function CourseEditor({ courseId }: { courseId: Id<"courses"> }) {
         {error ? <StatusMessage kind="error">{error}</StatusMessage> : null}
       </header>
       <CourseForm key={course._id} course={course} />
-      <LessonsList courseId={courseId} lessons={lessons} />
+      <Tabs defaultValue="content" className="flex flex-col gap-6">
+        <TabsList aria-label="Course sections" className="flex gap-2 border-b border-line">
+          <TabsTab value="content" className="px-4 py-2 text-sm font-medium text-muted data-selected:border-b-2 data-selected:border-accent data-selected:text-fg">
+            Content
+          </TabsTab>
+          <TabsTab value="results" className="px-4 py-2 text-sm font-medium text-muted data-selected:border-b-2 data-selected:border-accent data-selected:text-fg">
+            Results
+          </TabsTab>
+        </TabsList>
+        <TabsPanel value="content">
+          {chapters === undefined ? (
+            <p className="text-muted">Loading chapters...</p>
+          ) : chapters.length > 0 ? (
+            <ChaptersPanel
+              courseId={courseId}
+              chapters={chapters}
+              language={course.language ?? "en"}
+              jobId={course.generationJobId}
+            />
+          ) : (
+            <LessonsList courseId={courseId} lessons={lessons} />
+          )}
+        </TabsPanel>
+        <TabsPanel value="results">
+          <ResultsTable courseId={courseId} />
+        </TabsPanel>
+      </Tabs>
     </div>
   );
 }

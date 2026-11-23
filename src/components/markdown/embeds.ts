@@ -1,0 +1,95 @@
+// Pure parsers for ```youtube and ```resource fenced blocks. No React/DOM imports: the Convex
+// source scanner (convex/lib/sourceScan.ts) imports this file by relative path.
+import { z } from "zod";
+
+const youtubeSchema = z.object({
+  videoId: z.string().regex(/^[\w-]{11}$/, "videoId must be an 11-character YouTube ID"),
+  title: z.string().trim().min(1, "title is required"),
+  start: z.number().int().min(0).optional(),
+});
+
+const resourceSchema = z.object({
+  resourceId: z.string().trim().min(1, "resourceId is required"),
+});
+
+export type YoutubeEmbed = { videoId: string; title: string; start?: number };
+export type ParsedYoutube = { ok: true; embed: YoutubeEmbed } | { ok: false; error: string };
+export type ParsedResource = { ok: true; resourceId: string } | { ok: false; error: string };
+
+function parseJson(json: string): { ok: true; raw: unknown } | { ok: false; error: string } {
+  try {
+    return { ok: true, raw: JSON.parse(json) };
+  } catch (e) {
+    return { ok: false, error: `Invalid JSON: ${e instanceof Error ? e.message : "parse error"}` };
+  }
+}
+
+function describeIssue(error: z.ZodError): string {
+  const issue = error.issues[0];
+  const path = issue.path.join(".");
+  return path ? `${path}: ${issue.message}` : issue.message;
+}
+
+/** Parses the JSON body of a ```youtube block. Never throws. */
+export function parseYoutubeBlock(json: string): ParsedYoutube {
+  const parsed = parseJson(json);
+  if (!parsed.ok) return parsed;
+  const result = youtubeSchema.safeParse(parsed.raw);
+  return result.success
+    ? { ok: true, embed: result.data }
+    : { ok: false, error: describeIssue(result.error) };
+}
+
+/** Parses the JSON body of a ```resource block. Never throws. */
+export function parseResourceBlock(json: string): ParsedResource {
+  const parsed = parseJson(json);
+  if (!parsed.ok) return parsed;
+  const result = resourceSchema.safeParse(parsed.raw);
+  return result.success
+    ? { ok: true, resourceId: result.data.resourceId }
+    : { ok: false, error: describeIssue(result.error) };
+}
+
+/**
+ * The language of a fenced code block, from its info string (or, in the renderer, from the code
+ * element's `language-<lang>` class): the first whitespace-separated token, only when it is made
+ * of word characters and dashes; null otherwise. The renderer (LessonMarkdown) and the engine's
+ * source scanner both use this, so they always agree on which fences are ```youtube / ```resource.
+ */
+export function fenceLanguage(info: string | null | undefined): string | null {
+  const token = info?.trim().split(/\s+/)[0] ?? "";
+  return /^[\w-]+$/.test(token) ? token : null;
+}
+
+/** True only for absolute http(s) URLs; rejects javascript:, data:, etc. */
+export function isSafeHttpUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** 11-char YouTube video id from watch?v=, youtu.be/, /embed/, /shorts/ URLs; null otherwise. */
+export function youtubeIdFromUrl(url: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(url.trim());
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+  const host = u.hostname.replace(/^(www|m)\./, "");
+  let id: string | null = null;
+  if (host === "youtu.be") {
+    id = u.pathname.split("/")[1] ?? null;
+  } else if (host === "youtube.com" || host === "youtube-nocookie.com") {
+    if (u.pathname === "/watch") id = u.searchParams.get("v");
+    else {
+      const m = u.pathname.match(/^\/(?:embed|shorts)\/([^/]+)/);
+      id = m ? m[1] : null;
+    }
+  }
+  return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+}

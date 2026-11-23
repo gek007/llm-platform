@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAccessLesson } from "./access";
+import { canAccessCourseContent, canAccessLesson } from "./access";
 
 const base = { signedIn: true, pro: false, admin: false };
 const free = { tier: "free" as const };
@@ -34,5 +34,18 @@ describe("canAccessLesson", () => {
     expect(
       canAccessLesson({ course: pro, lesson: normal, signedIn: true, pro: false, admin: true }),
     ).toBe(true);
+  });
+});
+
+describe("canAccessCourseContent", () => {
+  it("admin always, free needs sign-in, pro needs pro", () => {
+    expect(canAccessCourseContent({ course: pro, signedIn: false, pro: false, admin: true })).toBe(true);
+    expect(canAccessCourseContent({ course: free, signedIn: false, pro: false, admin: false })).toBe(false);
+    expect(canAccessCourseContent({ course: free, ...base })).toBe(true);
+    expect(canAccessCourseContent({ course: pro, ...base })).toBe(false);
+    expect(canAccessCourseContent({ course: pro, ...base, pro: true })).toBe(true);
+    expect(
+      canAccessCourseContent({ course: pro, signedIn: false, pro: true, admin: false }),
+    ).toBe(false);
   });
 });
