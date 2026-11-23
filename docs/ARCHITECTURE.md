@@ -16,6 +16,8 @@ Living document. Update it whenever a step changes the stack, structure, or tool
 | 7 | First `eve` agent (`Learnly` in `agents/learnly/`), `withEve` Next.js integration, `/learnly` chat UI with UI SDK wrappers, unit + E2E tests | Done | `3d802b1` |
 | 8 | LMS features ([design](superpowers/specs/2026-11-21-lms-features-design.md)): Clerk + Convex in the app, schema and seed, landing and custom pricing (Clerk Billing), course catalog, lesson player (Mux, markdown, quizzes, progress), dashboard, admin panel with Mux uploads, Pro-only AI tutor widget with Clerk-verified auth | Done | `3d802b1` |
 | 9 | Full-page LMS knowledge-graph backdrop on `/`, clickable Mux preview video in `HeroDemo`, custom signed Mux videos for TypeScript Foundations lessons 1–2, Vercel Production deployment | Done | `e507a09` |
+| 10 | Hands-on labs POC on E2B ([design](superpowers/specs/2026-11-23-labs-poc-design.md)): lab image with terminal (ttyd) and VS Code (code-server), `LabProvider` (E2B, Docker, fake), lab sessions and exercise checks in Convex, lab page | Planned | — |
+| 11 | Course engine demo ([design](superpowers/specs/2026-11-23-course-engine-design.md)): `course-builder` eve agent generates a course from a topic and resources (URL, PDF, YouTube embed, text) in English, Hebrew or Russian; chapters/subchapters, slide decks, practice quizzes, recorded chapter tests, sources; outline approval, live progress, admin review and results | Planned | — |
 
 Production (<https://llm-platform-xi.vercel.app>) runs the full Learnly LMS app (backed by the Clerk dev instance and Convex dev deployment `hallowed-iguana-534` until a custom domain and Convex prod deploy key are configured). Each area has a reference page in `docs/features/`:
 
