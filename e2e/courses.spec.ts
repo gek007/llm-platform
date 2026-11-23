@@ -27,7 +27,9 @@ test("free preview lesson shows the body and the quiz works", async ({ page }) =
   await expect(quiz).toBeVisible();
   await quiz.getByRole("radio", { name: /Before the code runs/ }).click();
   await page.getByRole("button", { name: "Check answer" }).click();
-  await expect(page.getByRole("status")).toContainText("Correct!");
+  // Scoped to the quiz: the lesson's video player has its own status ("Loading video…").
+  const quizRegion = page.getByRole("region", { name: "When are TypeScript types checked?" });
+  await expect(quizRegion.getByRole("status")).toContainText("Correct!");
 });
 
 test("a locked pro lesson shows the gate card and no lesson content", async ({ page }) => {

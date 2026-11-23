@@ -29,7 +29,7 @@ function AccountNav() {
   const isAdmin = user?.publicMetadata?.role === "admin";
   return (
     <>
-      <NavLink href="/dashboard" label="Dashboard" />
+      <NavLink href="/dashboard" label="My Learning" />
       {isAdmin ? <NavLink href="/admin" label="Admin" /> : null}
     </>
   );
