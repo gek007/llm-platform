@@ -1,6 +1,6 @@
 # Course engine
 
-Spec: [course-engine-design](../superpowers/specs/2026-11-23-course-engine-design.md). The first half covers what learners see; "Admin generation" covers the admin flow. The `course-builder` agent arrives in a later milestone (until then `COURSE_ENGINE_MODE=fake` stands in for it).
+Spec: [course-engine-design](../superpowers/specs/2026-11-23-course-engine-design.md). The first half covers what learners see; "Admin generation" covers the admin flow. The `course-builder` eve agent (`agents/course-builder/`) does the research and writing; `COURSE_ENGINE_MODE=fake` swaps in a canned engine for local work without an agent.
 
 ## Chaptered courses
 
