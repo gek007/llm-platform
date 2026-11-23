@@ -2,6 +2,7 @@ import { query } from "./_generated/server";
 import { v } from "convex/values";
 import { canAccessCourseContent, canAccessLesson } from "./lib/access";
 import { getViewerState } from "./lib/auth";
+import { attemptSummary } from "./lib/testAttempts";
 
 export const getForViewer = query({
   args: { courseSlug: v.string(), chapterSlug: v.string() },
@@ -41,27 +42,16 @@ export const getForViewer = query({
       .first();
     let test = null;
     if (testRow) {
-      const attempts = viewer.subject
-        ? await ctx.db
-            .query("testAttempts")
-            .withIndex("by_user_test", (q) =>
-              q.eq("userId", viewer.subject!).eq("testId", testRow._id),
-            )
-            .collect()
-        : [];
-      const top = attempts.reduce<(typeof attempts)[number] | null>(
-        (b, a) => (b === null || a.scorePercent > b.scorePercent ? a : b),
-        null,
-      );
+      const { best, attemptsUsed } = viewer.subject
+        ? await attemptSummary(ctx, viewer.subject, testRow._id)
+        : { best: null, attemptsUsed: 0 };
       test = {
         _id: testRow._id,
         questionCount: testRow.questions.length,
         passPercent: testRow.passPercent,
         maxAttempts: testRow.maxAttempts,
-        best: top
-          ? { scorePercent: top.scorePercent, passed: attempts.some((a) => a.passed) }
-          : null,
-        attemptsUsed: attempts.length,
+        best,
+        attemptsUsed,
       };
     }
 

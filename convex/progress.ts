@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { canAccessLesson } from "./lib/access";
+import { ensureEnrolled } from "./lib/enrollment";
 import { getIdentity, getViewerState, requireUser } from "./lib/auth";
 
 export const setComplete = mutation({
@@ -24,17 +25,7 @@ export const setComplete = mutation({
       .unique();
 
     if (complete) {
-      const enrolled = await ctx.db
-        .query("enrollments")
-        .withIndex("by_user_course", (q) => q.eq("userId", userId).eq("courseId", course._id))
-        .unique();
-      if (!enrolled) {
-        await ctx.db.insert("enrollments", {
-          userId,
-          courseId: course._id,
-          enrolledAt: Date.now(),
-        });
-      }
+      await ensureEnrolled(ctx, userId, course._id);
       if (!existing) {
         await ctx.db.insert("lessonProgress", {
           userId,
