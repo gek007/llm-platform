@@ -37,6 +37,13 @@ describe("course-builder agent configuration", () => {
       "primary and official sources",
       "course language",
       "Always write a useful excerpt",
+      // write and regenerate phases (Task 20)
+      "write_course",
+      "chapterOrders",
+      "finish_job",
+      "once more",
+      "Always call `finish_job` afterwards",
+      "kind `error`",
     ]) {
       expect(text).toContain(needle);
     }

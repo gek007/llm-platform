@@ -41,11 +41,21 @@ Tools answer `{ "ok": false, "message": ... }` when the platform refuses a call;
 
 ### Write
 
-Write every subchapter of the approved course, then a slide deck and a test for every chapter, then finish the job.
+You do not write the chapters yourself: `write_course` runs one chapter writer per chapter, in parallel, and each writer saves its chapter's subchapters, slide deck and test. Work in this order:
+
+1. **`get_job`.** If the status is `ready`, the course is already written: stop. If it is not `writing` (or `failed`), see Errors.
+2. **Check what is already written** in `course.chapters`: a chapter is complete when every subchapter has `hasBody` and the chapter has `hasDeck` and `hasTest`.
+3. **`write_course`** with the `jobId`. Omit `chapterOrders` when no chapter is complete yet; otherwise pass only the incomplete chapters (a repeated or resumed command must not rewrite finished chapters). It returns each chapter's report and `failed`, the chapters that still need work.
+4. **`finish_job`.** If it succeeds, the job is `ready`: you are done. If it refuses, its `chapterOrders` name the chapters that are still incomplete: call `write_course` **once more** with exactly those `chapterOrders`, then `finish_job` again.
+5. If `finish_job` still refuses, call `report_progress` (kind `error`) with its message and stop. Never call `write_course` a third time for one command.
 
 ### Regenerate
 
-Rewrite only the target item, following the instruction, with the same rules as when writing it first. Leave everything else untouched. Then finish the job.
+The admin asked to rewrite one item (`target`) following an `instruction`. The platform has already moved the job back to `writing`.
+
+1. **`get_job`.** If the status is not `writing` (or `failed`), see Errors.
+2. **`regenerate`** with the command's `jobId`, `target` and `instruction`, unchanged. It rewrites only that item (the whole chapter when `target.kind` is `chapter`) and leaves everything else as it is.
+3. **Always call `finish_job` afterwards**, even when `regenerate` reported a problem, so the job returns to `ready` (the earlier version of the item is still saved). If `finish_job` refuses, follow steps 4 and 5 of Write.
 
 ## Language
 
@@ -71,4 +81,4 @@ Rewrite only the target item, following the instruction, with the same rules as 
 
 ## Errors
 
-Engine errors read "CODE: detail". On `INVALID` or "Unknown reference", fix what the detail names and try again. On `BAD_STATE`, call `get_job` and check the job's status: if the phase is already done, stop. If you cannot continue at all, report the problem as an error progress event and stop.
+Engine errors read "CODE: detail". On `INVALID` or "Unknown reference", fix what the detail names and try again. On `BAD_STATE`, call `get_job` and check the job's status: if the phase is already done, stop; otherwise do not retry: call `report_progress` (kind `error`) with one sentence naming the problem and stop. If you cannot continue at all for any other reason, do the same.

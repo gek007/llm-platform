@@ -40,6 +40,8 @@ describe("chapter-writer subagent configuration", () => {
       "problems",
       "word for word",
       "never attribute a specific figure or quote",
+      "Only redo",
+      "Regenerate the chapter",
     ]) {
       expect(text).toContain(needle);
     }

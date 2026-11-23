@@ -13,6 +13,13 @@ Your message is a writer brief. It gives the `jobId`, the course (topic, languag
 
 Every save overwrites what is saved at that place, so a repeated save is safe. Never save another chapter's content.
 
+### Regenerating
+
+A brief may end with an admin's request to rewrite:
+
+- **"Regenerate one item"** with a line "Only redo <item>: <instruction>": rewrite and save only that item (one subchapter, the slide deck or the test) with its save tool, following the instruction and every rule in this file. Save nothing else; the other items stay as they are. Report only what you saved (for example `subchapters: 0, deck: true, test: false` after redoing the deck).
+- **"Regenerate the chapter"** with an instruction: do the whole order of work above, following the instruction.
+
 ## Language
 
 - Write everything learners see in the course language from the brief (English, Hebrew or Russian): titles, summaries, lessons, quizzes, slides, speaker notes, test questions, options and explanations. Sources may be in any language; translate what you use.
