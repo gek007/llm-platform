@@ -10,6 +10,7 @@ import {
   slideValidator,
   sourceKindValidator,
   TEST_DEFAULTS,
+  type JobBrief,
   type JobStatus,
   type Question,
   type Slide,
@@ -244,7 +245,7 @@ function validateTestQuestion(q: Question) {
 
 export const getJob = internalQuery({
   args: { jobId: v.string() },
-  handler: async (ctx, { jobId }) => {
+  handler: async (ctx, { jobId }): Promise<JobBrief> => {
     const job = await loadJob(ctx, jobId);
     const resources = await Promise.all(
       (await jobResources(ctx, job._id)).map(async (r) => ({

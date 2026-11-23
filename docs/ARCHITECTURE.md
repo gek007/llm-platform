@@ -17,7 +17,7 @@ Living document. Update it whenever a step changes the stack, structure, or tool
 | 8 | LMS features ([design](superpowers/specs/2026-11-21-lms-features-design.md)): Clerk + Convex in the app, schema and seed, landing and custom pricing (Clerk Billing), course catalog, lesson player (Mux, markdown, quizzes, progress), dashboard, admin panel with Mux uploads, Pro-only AI tutor widget with Clerk-verified auth | Done | `3d802b1` |
 | 9 | Full-page LMS knowledge-graph backdrop on `/`, clickable Mux preview video in `HeroDemo`, custom signed Mux videos for TypeScript Foundations lessons 1–2, Vercel Production deployment | Done | `e507a09` |
 | 10 | Hands-on labs POC on E2B ([design](superpowers/specs/2026-11-23-labs-poc-design.md)): lab image with terminal (ttyd) and VS Code (code-server), `LabProvider` (E2B, Docker, fake), lab sessions and exercise checks in Convex, lab page | Planned | — |
-| 11 | Course engine demo ([design](superpowers/specs/2026-11-23-course-engine-design.md)): `course-builder` eve agent generates a course from a topic and resources (URL, PDF, YouTube embed, text) in English, Hebrew or Russian; chapters/subchapters, slide decks, practice quizzes, recorded chapter tests, sources; outline approval, live progress, admin review and results | In progress (learner side and admin generation UI done: chapters, decks, tests, completion, wizard, live view, outline editor, engine API, fake engine; the `course-builder` agent is pending) | — |
+| 11 | Course engine demo ([design](superpowers/specs/2026-11-23-course-engine-design.md)): `course-builder` eve agent generates a course from a topic and resources (URL, PDF, YouTube embed, text) in English, Hebrew or Russian; chapters/subchapters, slide decks, practice quizzes, recorded chapter tests, sources; outline approval, live progress, admin review and results | In progress (learner side and admin generation UI done: chapters, decks, tests, completion, wizard, live view, outline editor, engine API, fake engine; `course-builder` agent scaffold with `jwtHmac` channel, typed engine client and live dispatch; its tools are pending) | — |
 
 Production (<https://llm-platform-xi.vercel.app>) runs the full Learnly LMS app (backed by the Clerk dev instance and Convex dev deployment `hallowed-iguana-534` until a custom domain and Convex prod deploy key are configured). Each area has a reference page in `docs/features/`:
 
@@ -153,6 +153,8 @@ Deployments normally come from Git pushes. `vercel deploy` from this folder crea
 | `NEXT_PUBLIC_CONVEX_SITE_URL` | Convex HTTP actions (e.g. webhooks) | `npx convex dev` |
 | `COURSE_ENGINE_SECRET` | Bearer secret for the Convex HTTP `/engine/*` surface; the same value is on the Convex deployment and read by the Next.js routes/engine. Generated with `openssl rand -hex 32`, never printed |
 | `COURSE_ENGINE_MODE` | `fake` or `live` (default `live`): fake runs the canned engine instead of the `course-builder` agent |
+| `COURSE_BUILDER_CHANNEL_SECRET` | HS256 key for Next.js -> `course-builder` agent JWTs (`src/lib/course-builder/eve-client.ts` signs, `agents/course-builder/agent/channels/eve.ts` verifies). Generated with `openssl rand -hex 32`, never printed |
+| `COURSE_BUILDER_URL` | Optional. Base URL of the agent's `/v1/*` routes for live dispatch; default `http://127.0.0.1:2001/eve` (`npm run dev:course-builder`) |
 | `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` | Local copy of the Mux access token kept on the Convex deployment (server only) | Mux Dashboard → Settings → Access Tokens |
 | `VERCEL_OIDC_TOKEN` | Vercel services called from local code (unused so far); expires after about 12 hours | `vercel link`, refreshed by `vercel env pull` |
 
@@ -167,12 +169,13 @@ Convex deployment env vars (`npx convex env list`), read by Convex functions:
 
 Setting up a new machine: `clerk auth login && clerk link --app app_3MQ6Ah3aicMxqGdRvLxQwJi2ljf && clerk env pull --file .env.local`, then `npx convex dev` (select the existing `llm-platform` project), then `vercel login && vercel link --project llm-platform --scope gek007s-projects`. `scripts/check-dev-tooling.sh` fails if `.env.local` is missing a key listed in `.env.example` or the folder isn't linked to the Vercel project.
 
-Daily development runs two processes, started together by `npm run dev:all`:
+Daily development runs three processes, started together by `npm run dev:all`:
 
 - `npm run dev`: Next.js on port 3000 (or `PORT`).
 - `npm run dev:convex` (`convex dev`): watches `convex/`, typechecks it, regenerates `convex/_generated/` and pushes functions, schema and `auth.config.ts` to the dev deployment on every save. Add `-- --once` to push once and exit.
+- `npm run dev:course-builder` (`eve dev --agent course-builder --resume --no-ui --port 2001`): the course engine agent. `--resume` keeps job sessions alive across restarts; port 2001 leaves 2000 to `npm run dev:learnly`. Live dispatch calls it at `COURSE_BUILDER_URL` (default `http://127.0.0.1:2001/eve`). `next dev` (via `withEve`) also starts its own copy of every workspace agent for the `/eve/<name>/v1/*` proxy; the route doesn't use that copy.
 
-`dev:all` uses `concurrently`, which prefixes each output line with `[next]` or `[convex]`. If either process exits, it stops the other, and Ctrl+C stops both. Clerk, Vercel and Mux are hosted services, so nothing runs locally for them. Next.js allows only one dev server per project folder, so stop any running `npm run dev` before starting `dev:all`.
+`dev:all` uses `concurrently`, which prefixes each output line with `[next]`, `[convex]` or `[course-builder]`. If any process exits, it stops the others, and Ctrl+C stops all. Clerk, Vercel and Mux are hosted services, so nothing runs locally for them. Next.js allows only one dev server per project folder, so stop any running `npm run dev` before starting `dev:all`.
 
 Production credentials (a Clerk production instance, a Convex prod deploy key, a Mux production token) are not created yet. They go into the service that reads them (Vercel's Production environment variables or the Convex prod deployment), never into files.
 
@@ -229,6 +232,13 @@ agents/                       eve agent workspace (each subfolder is a named age
       lib/                    Clerk verification, viewer context, Convex client helpers
       tools/                  `list_courses`, `get_course_details`, `get_my_progress`, `get_lesson`, `show_quiz` + tests
     evals/                    Baseline eve evals (`evals.config.ts`, `smoke.eval.ts`)
+  course-builder/             Course engine agent (`claude-opus-5-5`, `reasoning: "high"`, `defaultTools: false`)
+    agent/
+      agent.ts instructions.md   Model config; role, commands, phases, language, source integrity, quality bar
+      channels/eve.ts         `jwtHmac` service auth only (`COURSE_BUILDER_CHANNEL_SECRET`, `sub: course-builder-route`); 401 for everything without the secret
+      lib/engine-client.ts    Typed `/engine/*` client (`createEngineClient`, `engineFromEnv`, `EngineError`), built on `src/lib/course-builder/engine-http.ts`
+      lib/command.ts          Re-exports `parseCommand` from `src/lib/course-builder/commands.ts`
+    evals/                    `evals.config.ts` (evals come later)
 convex/                       Convex backend functions; convex/_generated/ is written by `npx convex dev`
   auth.config.ts              Trusts Clerk session tokens (see Clerk ↔ Convex auth)
   schema.ts                   Tables and indexes (see Data model)
@@ -326,10 +336,11 @@ Lesson markdown supports GFM, highlighted code blocks with a copy button, and qu
 | ------- | ------------ |
 | `npm run typecheck` | `next typegen` (route types such as `LayoutProps`) then `tsc --noEmit` |
 | `npm run lint` | ESLint |
-| `npm test` | Vitest once (`src/**/*.test.{ts,tsx}`, `convex/**/*.test.ts`, `agents/**/*.test.ts`; 174 tests in 37 files); `npm run test:watch` for watch mode |
-| `npm run test:e2e` | Playwright; builds Learnly and Next.js and starts a production server on `PORT` (default 3100); 23 tests, signed-out flows only. Outside CI it reuses a server already listening on that port, so stop any `next start` there first or you test a stale build |
+| `npm test` | Vitest once (`src/**/*.test.{ts,tsx}`, `convex/**/*.test.ts`, `agents/**/*.test.ts`; 463 tests in 70 files); `npm run test:watch` for watch mode |
+| `npm run test:e2e` | Playwright; builds Learnly, the course-builder agent and Next.js and starts a production server on `PORT` (default 3100); 23 tests, signed-out flows only. Outside CI it reuses a server already listening on that port, so stop any `next start` there first or you test a stale build |
 | `npm run info:learnly` | Inspects eve discovery, tools, and diagnostics for `agents/learnly/` |
 | `npm run eval:learnly` | Runs `agents/learnly/evals/` against a local Learnly server (needs live model credentials) |
+| `npm run info:course-builder`, `npm run eval:course-builder` | The same for `agents/course-builder/` |
 | `scripts/check-dev-tooling.sh [--online]` | Dev tooling and service configuration (see Repository layout) |
 
 Conventions:

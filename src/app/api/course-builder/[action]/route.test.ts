@@ -158,6 +158,35 @@ describe("POST /api/course-builder/[action]", () => {
     );
   });
 
+  it.each([
+    ["approve", {}],
+    [
+      "regenerate",
+      { target: { kind: "test", chapterOrder: 2 }, instruction: "harder" },
+    ],
+  ])(
+    "%s sends the follow-up to the job's stored eve session",
+    async (action, extra) => {
+      handlers.set("generation:approveOutline", () => "course1");
+      handlers.set("generation:requestRegenerate", () => null);
+      job = { _id: "j1", status: "writing", eveSessionId: "wrun_stored" };
+      const res = await call(action, { jobId: "j1", ...extra });
+      expect(res.status).toBe(200);
+      expect(dispatchMock).toHaveBeenCalledWith(expect.anything(), {
+        sessionId: "wrun_stored",
+      });
+    },
+  );
+
+  it("start always opens a new session", async () => {
+    handlers.set("generation:startJob", () => null);
+    job = { _id: "j1", status: "researching", eveSessionId: "wrun_stale" };
+    await call("start", { jobId: "j1" });
+    expect(dispatchMock).toHaveBeenCalledWith(expect.anything(), {
+      sessionId: undefined,
+    });
+  });
+
   it("regenerate on a published course is 409 with the published message", async () => {
     handlers.set("generation:requestRegenerate", () => {
       throw new ConvexError("BAD_STATE");

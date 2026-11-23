@@ -87,10 +87,13 @@ export async function POST(
   try {
     if (action === "start") {
       await convex.mutation(api.generation.startJob, { jobId: id });
-    } else if (action === "approve") {
-      await convex.mutation(api.generation.approveOutline, { jobId: id });
-    } else if (action === "regenerate") {
-      await convex.mutation(api.generation.requestRegenerate, { jobId: id });
+    } else if (action === "approve" || action === "regenerate") {
+      if (action === "approve")
+        await convex.mutation(api.generation.approveOutline, { jobId: id });
+      else
+        await convex.mutation(api.generation.requestRegenerate, { jobId: id });
+      // Follow-ups go to the job's session; without one (or if it's gone) the agent gets a new one.
+      sessionId = (await current().catch(() => null))?.eveSessionId;
     } else {
       const job = await current();
       if (!job) return json(404, { error: "NOT_FOUND" });

@@ -1,20 +1,27 @@
 /**
- * Server-side client for the Convex `/engine/*` HTTP API (see convex/http.ts). Used by the fake
- * engine; the real agent has its own client. Server code only: it holds `COURSE_ENGINE_SECRET`
- * (the project does not use the `server-only` package; this module is only imported from route
- * handlers and server libs). Never logs the secret or the Authorization header.
+ * Client for the Convex `/engine/*` HTTP API (see convex/http.ts). Used by the fake engine and,
+ * wrapped in typed methods, by the course-builder agent (agents/course-builder/agent/lib/
+ * engine-client.ts). Server code only: it holds `COURSE_ENGINE_SECRET` (the project does not use
+ * the `server-only` package; this module is only imported from route handlers, server libs and
+ * the agent). Never logs the secret or the Authorization header.
  */
 
 export type EngineHttp = (op: string, body: unknown) => Promise<unknown>;
 
 type Options = { baseUrl?: string; secret?: string; fetch?: typeof fetch };
 
+/** A failed engine call. `message` is the server's whole `error` string ("CODE: detail"). */
+export class EngineError extends Error {
+  override name = "EngineError";
+}
+
 /** `CONVEX_SITE_URL`, else `NEXT_PUBLIC_CONVEX_SITE_URL`, else `NEXT_PUBLIC_CONVEX_URL` with `.convex.cloud` -> `.convex.site`. */
-function defaultBaseUrl(): string {
-  const site =
-    process.env.CONVEX_SITE_URL || process.env.NEXT_PUBLIC_CONVEX_SITE_URL;
+export function convexSiteUrl(
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const site = env.CONVEX_SITE_URL || env.NEXT_PUBLIC_CONVEX_SITE_URL;
   if (site) return site;
-  return (process.env.NEXT_PUBLIC_CONVEX_URL ?? "").replace(
+  return (env.NEXT_PUBLIC_CONVEX_URL ?? "").replace(
     /\.convex\.cloud\/?$/,
     ".convex.site",
   );
@@ -22,7 +29,7 @@ function defaultBaseUrl(): string {
 
 export function createEngineHttp(options: Options = {}): EngineHttp {
   return async (op, body) => {
-    const baseUrl = (options.baseUrl ?? defaultBaseUrl()).replace(/\/+$/, "");
+    const baseUrl = (options.baseUrl ?? convexSiteUrl()).replace(/\/+$/, "");
     const secret = options.secret ?? process.env.COURSE_ENGINE_SECRET ?? "";
     if (!baseUrl || !secret)
       throw new Error(
@@ -40,9 +47,10 @@ export function createEngineHttp(options: Options = {}): EngineHttp {
       (v) => v as { ok?: boolean; error?: string } | null,
       () => null, // not JSON; reported below
     );
-    if (!json) throw new Error(`Engine ${op} failed with HTTP ${res.status}`);
+    if (!json)
+      throw new EngineError(`Engine ${op} failed with HTTP ${res.status}`);
     if (!json.ok)
-      throw new Error(
+      throw new EngineError(
         json.error || `Engine ${op} failed with HTTP ${res.status}`,
       );
     return json;

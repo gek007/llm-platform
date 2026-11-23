@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createEngineHttp } from "./engine-http";
+import { convexSiteUrl, createEngineHttp, EngineError } from "./engine-http";
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -42,6 +42,7 @@ describe("engineHttp", () => {
         }),
     });
     const err = await http("saveDeck", {}).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(EngineError);
     expect((err as Error).message).toBe(
       "INVALID: a deck needs 6-12 slides, got 2",
     );
@@ -60,5 +61,33 @@ describe("engineHttp", () => {
   it("refuses to run without configuration", async () => {
     const http = createEngineHttp({ baseUrl: "", secret: "" });
     await expect(http("getJob", {})).rejects.toThrow(/not configured/);
+  });
+});
+
+describe("convexSiteUrl", () => {
+  it("prefers CONVEX_SITE_URL, then NEXT_PUBLIC_CONVEX_SITE_URL, then derives it from NEXT_PUBLIC_CONVEX_URL", () => {
+    const cloud = {
+      NEXT_PUBLIC_CONVEX_URL: "https://happy-otter-1.convex.cloud",
+    };
+    expect(convexSiteUrl(cloud)).toBe("https://happy-otter-1.convex.site");
+    expect(
+      convexSiteUrl({
+        NEXT_PUBLIC_CONVEX_URL: "https://happy-otter-1.convex.cloud/",
+      }),
+    ).toBe("https://happy-otter-1.convex.site");
+    expect(
+      convexSiteUrl({
+        ...cloud,
+        NEXT_PUBLIC_CONVEX_SITE_URL: "https://b.convex.site",
+      }),
+    ).toBe("https://b.convex.site");
+    expect(
+      convexSiteUrl({
+        ...cloud,
+        NEXT_PUBLIC_CONVEX_SITE_URL: "https://b.convex.site",
+        CONVEX_SITE_URL: "https://a.convex.site",
+      }),
+    ).toBe("https://a.convex.site");
+    expect(convexSiteUrl({})).toBe("");
   });
 });
