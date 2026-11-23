@@ -329,7 +329,7 @@ Defined in `convex/schema.ts`; seed data in `convex/lib/seedData.ts` (`npx conve
 | `chapterTests` | `courseId`, `chapterId`, `version`, `passPercent`, `maxAttempts`, `questions[]` (one row per chapter; edits bump `version` in place) | `by_chapter`, `by_course` |
 | `testAttempts` | `userId`, `courseId`, `testId`, `testVersion`, `answers`, `scorePercent`, `passed`, `submittedAt` | `by_user_test`, `by_test`, `by_user_course` |
 | `courseResources` | `jobId`, `courseId?`, `kind`, `title`, `url?`, `storageId?`, `text?`, `origin` (`admin` \| `engine`), `readStatus` | `by_job`, `by_course` |
-| `generationJobs` | `createdBy`, `topic`, `language`, `level`, `length`, `audience?`, `notes?`, `status`, `eveSessionId?`, `dispatchError?`, `outline?`, `courseId?`, `error?`, `usage?` | see `convex/schema.ts` |
+| `generationJobs` | `createdBy`, `topic`, `language`, `level`, `length`, `audience?`, `notes?`, `status`, `eveSessionId?`, `dispatchError?`, `pendingCommand?` (last dispatched command, re-sent by Resume), `outline?`, `courseId?`, `error?`, `usage?` | see `convex/schema.ts` |
 | `generationEvents` | `jobId`, `at`, `kind`, `message`, `chapterOrder?` | `by_job_at` |
 | `generationSources` | `jobId`, `url`, `title`, `kind`, `resourceId?`, `excerpt?` | `by_job`, `by_job_url` |
 
@@ -342,7 +342,7 @@ Defined in `convex/schema.ts`; seed data in `convex/lib/seedData.ts` (`npx conve
 | `progress` | `setComplete`, `forCourse` |
 | `users`, `viewer` | `store` (upsert on sign-in), `get` (`signedIn`, `isAdmin`, `isPro`, `user`) |
 | `playback` | `getLessonTokens` (action): signed Mux tokens after an access check; `null` when locked or no ready video |
-| `admin`, `mux` | Admin-only CRUD, lesson reorder, cascading course delete, Mux direct upload, `syncLessonVideo`, `removeVideo` |
+| `admin`, `mux` | Admin-only CRUD, lesson reorder, cascading course delete (lessons, enrollments, progress, chapters, decks, tests and attempts, resources and their PDF blobs), Mux direct upload, `syncLessonVideo`, `removeVideo` |
 | `http` | `POST /mux/webhook` (signature-verified, fails closed without `MUX_WEBHOOK_SECRET`) |
 
 Lesson markdown supports GFM, highlighted code blocks with a copy button, and quizzes as fenced `quiz` blocks with a JSON body (`{ "question", "options", "answer", "explanation" }`). Markdown headings render one level down (the page owns the `<h1>`), and the lesson player drops a leading heading that repeats the lesson title.

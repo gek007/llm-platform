@@ -178,7 +178,7 @@ export const startJob = mutation({
   },
 });
 
-/** ready -> writing, only while the job's course is still a draft. */
+/** ready -> writing, only while the job's course still exists and is a draft. */
 export const requestRegenerate = mutation({
   args: { jobId: v.id("generationJobs") },
   handler: async (ctx, { jobId }) => {
@@ -186,8 +186,9 @@ export const requestRegenerate = mutation({
     const job = await getJob(ctx, jobId);
     if (job.status !== "ready") throw new ConvexError("BAD_STATE");
     const course = job.courseId ? await ctx.db.get(job.courseId) : null;
-    // Published/archived course: BAD_STATE (message: REGENERATE_PUBLISHED_MESSAGE).
-    if (course && course.status !== "draft") throw new ConvexError("BAD_STATE");
+    // No course (deleted): nothing to regenerate. Published/archived course: BAD_STATE
+    // (message: REGENERATE_PUBLISHED_MESSAGE).
+    if (!course || course.status !== "draft") throw new ConvexError("BAD_STATE");
     await transition(ctx, job, ["ready"], "writing");
     // The route records the new command next; until then Resume falls back to the status mapping.
     await ctx.db.patch(jobId, { pendingCommand: undefined });

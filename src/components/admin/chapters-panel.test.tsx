@@ -66,6 +66,22 @@ describe("ChaptersPanel", () => {
     expect(screen.getByText(/Writing chapter 1/)).toBeInTheDocument();
   });
 
+  test("a failed job shows its error and links to the job page", () => {
+    data.get = { _id: "job1", status: "failed", error: "No progress for 15 minutes" };
+    render(<ChaptersPanel courseId={"c1" as never} chapters={chapters} language="en" jobId="job1" />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Regeneration failed: No progress for 15 minutes");
+    expect(screen.getByRole("link", { name: "Open the generation job to retry" })).toHaveAttribute(
+      "href",
+      "/admin/generate/job1",
+    );
+    expect(screen.queryByText(/Regenerating…/)).not.toBeInTheDocument();
+  });
+
+  test("no failure banner while ready or writing", () => {
+    render(<ChaptersPanel courseId={"c1" as never} chapters={chapters} language="en" jobId="job1" />);
+    expect(screen.queryByText(/Regeneration failed/)).not.toBeInTheDocument();
+  });
+
   test("an open deck editor is paused while the job is writing", async () => {
     data.get = { _id: "job1", status: "writing" };
     data.getDeck = { _id: "d1", slides: [] };

@@ -126,12 +126,56 @@ describe("course CRUD", () => {
       await ctx.db.insert("enrollments", { userId: "u", courseId: keep, enrolledAt: 1 });
     });
     const result = await admin.mutation(api.admin.deleteCourse, { courseId });
-    expect(result).toEqual({ lessons: 1, enrollments: 1, progress: 1 });
+    expect(result).toEqual({ lessons: 1, enrollments: 1, progress: 1, chapters: 0, tests: 0, resources: 0 });
     await t.run(async (ctx) => {
       expect(await ctx.db.query("lessons").collect()).toHaveLength(0);
       expect(await ctx.db.query("lessonProgress").collect()).toHaveLength(0);
       expect(await ctx.db.query("enrollments").collect()).toHaveLength(1);
       expect(await ctx.db.get(courseId)).toBeNull();
+    });
+  });
+});
+
+describe("deleting a generated course", () => {
+  it("also deletes its chapters, decks, tests, attempts and resources (with PDF blobs); other courses keep theirs", async () => {
+    const { t, admin, courseId } = await setup();
+    const keep = await admin.mutation(api.admin.createCourse, { ...course, slug: "keep" });
+    const seeded = await t.run(async (ctx) => {
+      const jobId = await ctx.db.insert("generationJobs", {
+        createdBy: "admin_1", topic: "x", language: "en", level: "beginner", length: "short",
+        status: "ready", courseId, createdAt: 0, updatedAt: 0,
+      });
+      const add = async (cid: Id<"courses">) => {
+        const chapterId = await ctx.db.insert("chapters", { courseId: cid, slug: "chapter-1", title: "C", summary: "s", order: 1 });
+        await ctx.db.insert("slideDecks", { courseId: cid, chapterId, slides: [], updatedAt: 0 });
+        const testId = await ctx.db.insert("chapterTests", {
+          courseId: cid, chapterId, version: 1, passPercent: 70, maxAttempts: 3, questions: [],
+        });
+        await ctx.db.insert("testAttempts", {
+          userId: "u", courseId: cid, testId, testVersion: 1, answers: [], scorePercent: 100, passed: true, submittedAt: 1,
+        });
+        const storageId = await ctx.storage.store(new Blob(["%PDF"]));
+        await ctx.db.insert("courseResources", {
+          jobId, courseId: cid, kind: "pdf", title: "Sheet", storageId, origin: "admin", readStatus: "read",
+        });
+        await ctx.db.insert("courseResources", {
+          jobId, courseId: cid, kind: "text", title: "Notes", text: "n", origin: "admin", readStatus: "read",
+        });
+        return storageId;
+      };
+      return { blob: await add(courseId), keptBlob: await add(keep) };
+    });
+    const result = await admin.mutation(api.admin.deleteCourse, { courseId });
+    expect(result).toMatchObject({ chapters: 1, tests: 1, resources: 2 });
+    await t.run(async (ctx) => {
+      for (const table of ["chapters", "slideDecks", "chapterTests", "testAttempts"] as const) {
+        const rows = await ctx.db.query(table).collect();
+        expect(rows.map((r) => r.courseId)).toEqual([keep]);
+      }
+      const resources = await ctx.db.query("courseResources").collect();
+      expect(resources.map((r) => r.courseId)).toEqual([keep, keep]);
+      expect(await ctx.storage.get(seeded.blob)).toBeNull();
+      expect(await ctx.storage.get(seeded.keptBlob)).not.toBeNull();
     });
   });
 });

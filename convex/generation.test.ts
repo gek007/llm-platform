@@ -77,6 +77,14 @@ describe("requestRegenerate", () => {
     expect(job?.pendingCommand).toBeUndefined(); // the route records the regenerate next
     await expect(asAdmin(t).mutation(api.generation.requestRegenerate, { jobId })).rejects.toThrow("BAD_STATE");
   });
+  it("a deleted course is BAD_STATE and the job stays ready", async () => {
+    const t = makeT();
+    const jobId = await readyJob(t, "draft");
+    const courseId = (await asAdmin(t).query(api.generation.get, { jobId }))!.courseId!;
+    await asAdmin(t).mutation(api.admin.deleteCourse, { courseId });
+    await expect(asAdmin(t).mutation(api.generation.requestRegenerate, { jobId })).rejects.toThrow("BAD_STATE");
+    expect((await asAdmin(t).query(api.generation.get, { jobId }))?.status).toBe("ready");
+  });
   it("published course is BAD_STATE and job stays ready", async () => {
     const t = makeT();
     const jobId = await readyJob(t, "published");

@@ -70,7 +70,9 @@ describe("LessonPlayer", () => {
   });
 
   test("tolerates an older backend that returns no sources or language", () => {
-    const { sources: _sources, language: _language, ...legacy } = data({ locked: false });
+    const legacy: Record<string, unknown> = { ...data({ locked: false }) };
+    delete legacy.sources;
+    delete legacy.language;
     const { container } = render(
       <LessonPlayer data={legacy as unknown as LessonData} outline={outline} completedIds={[]} signedIn />,
     );

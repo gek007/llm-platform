@@ -43,6 +43,7 @@ export function ChaptersPanel({
     | Doc<"generationEvents">[]
     | undefined;
   const regenerating = Boolean(jobId) && job?.status === "writing";
+  const failed = Boolean(jobId) && job?.status === "failed";
   const latest = events?.at(-1)?.message;
 
   return (
@@ -51,6 +52,14 @@ export function ChaptersPanel({
         <p role="status" className="rounded-lg border border-accent/50 bg-accent/10 px-3 py-2 text-sm">
           Regenerating…{latest ? ` ${latest}` : ""}
         </p>
+      ) : null}
+      {failed ? (
+        <StatusMessage kind="error">
+          Regeneration failed: {job?.error ?? "the job failed."}{" "}
+          <Link href={`/admin/generate/${jobId}`} className="font-medium underline">
+            Open the generation job to retry
+          </Link>
+        </StatusMessage>
       ) : null}
       <ol className="flex flex-col gap-6">
         {chapters.map((chapter) => (

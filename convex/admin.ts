@@ -193,8 +193,48 @@ export const deleteCourse = mutation({
       .withIndex("by_course", (q) => q.eq("courseId", courseId))
       .collect();
     for (const row of progress) await ctx.db.delete(row._id);
+    // Generated courses also own chapters, decks, tests (with attempts) and resources (PDF blobs).
+    const chapters = await ctx.db
+      .query("chapters")
+      .withIndex("by_course_order", (q) => q.eq("courseId", courseId))
+      .collect();
+    for (const chapter of chapters) {
+      const decks = await ctx.db
+        .query("slideDecks")
+        .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
+        .collect();
+      for (const deck of decks) await ctx.db.delete(deck._id);
+      await ctx.db.delete(chapter._id);
+    }
+    const tests = await ctx.db
+      .query("chapterTests")
+      .withIndex("by_course", (q) => q.eq("courseId", courseId))
+      .collect();
+    for (const test of tests) {
+      const attempts = await ctx.db
+        .query("testAttempts")
+        .withIndex("by_test", (q) => q.eq("testId", test._id))
+        .collect();
+      for (const attempt of attempts) await ctx.db.delete(attempt._id);
+      await ctx.db.delete(test._id);
+    }
+    const resources = await ctx.db
+      .query("courseResources")
+      .withIndex("by_course", (q) => q.eq("courseId", courseId))
+      .collect();
+    for (const resource of resources) {
+      if (resource.storageId) await ctx.storage.delete(resource.storageId);
+      await ctx.db.delete(resource._id);
+    }
     await ctx.db.delete(courseId);
-    return { lessons: lessons.length, enrollments: enrollments.length, progress: progress.length };
+    return {
+      lessons: lessons.length,
+      enrollments: enrollments.length,
+      progress: progress.length,
+      chapters: chapters.length,
+      tests: tests.length,
+      resources: resources.length,
+    };
   },
 });
 
