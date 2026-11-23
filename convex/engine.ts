@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery, type QueryCtx } from "./_generated/server";
-import { validateQuestion } from "./lib/grading";
+import { deepEqual, requireText, TEXT_LIMIT, validateSlide, validateTestQuestion } from "./lib/contentValidation";
 import {
   eventKindValidator,
   outlineValidator,
@@ -14,8 +14,6 @@ import {
   type ChapterContent,
   type JobBrief,
   type JobStatus,
-  type Question,
-  type Slide,
 } from "./lib/engineTypes";
 import { logEvent, transition, validateOutline, type JobCtx } from "./lib/jobs";
 import {
@@ -59,7 +57,7 @@ const LIMITS = {
   body: 100_000,
   message: 2_000,
   excerpt: 5_000,
-  text: 2_000, // slide and question strings
+  text: TEXT_LIMIT,
   sourcesPerCall: 50,
   sourceIdsPerLesson: 50,
   minSlides: 6,
@@ -73,13 +71,6 @@ const NON_TERMINAL: JobStatus[] = ["queued", "researching", "outline_ready", "wr
 
 function fail(code: "NOT_FOUND" | "BAD_STATE" | "INVALID" | "INCOMPLETE", detail: string): never {
   throw new ConvexError(`${code}: ${detail}`);
-}
-
-function requireText(value: string, field: string, max: number): string {
-  const trimmed = value.trim();
-  if (!trimmed) fail("INVALID", `${field} must not be empty`);
-  if (value.length > max) fail("INVALID", `${field} is longer than ${max} characters`);
-  return trimmed;
 }
 
 function requireOrder(value: number, field: string) {
@@ -195,53 +186,6 @@ async function chapterLessons(ctx: Pick<QueryCtx, "db">, chapterId: Id<"chapters
     .query("lessons")
     .withIndex("by_chapter_order", (q) => q.eq("chapterId", chapterId))
     .collect();
-}
-
-function deepEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (Array.isArray(a) || Array.isArray(b)) {
-    return (
-      Array.isArray(a) &&
-      Array.isArray(b) &&
-      a.length === b.length &&
-      a.every((x, i) => deepEqual(x, b[i]))
-    );
-  }
-  if (a && b && typeof a === "object" && typeof b === "object") {
-    const ka = Object.keys(a).filter((k) => (a as Record<string, unknown>)[k] !== undefined);
-    const kb = Object.keys(b).filter((k) => (b as Record<string, unknown>)[k] !== undefined);
-    return (
-      ka.length === kb.length &&
-      ka.every((k) => deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))
-    );
-  }
-  return false;
-}
-
-function validateSlide(slide: Slide, n: number) {
-  const where = `slide ${n}`;
-  requireText(slide.title, `${where} title`, LIMITS.text);
-  requireText(slide.notes, `${where} notes`, LIMITS.text * 2);
-  const list = (items: string[] | undefined, field: string) => {
-    if (!items || items.length === 0) fail("INVALID", `${where} (${slide.layout}) needs ${field}`);
-    items.forEach((item) => requireText(item, `${where} ${field}`, LIMITS.text));
-  };
-  if (slide.layout === "bullets" || slide.layout === "summary") list(slide.bullets, "bullets");
-  if (slide.layout === "two-column") {
-    list(slide.left, "left");
-    list(slide.right, "right");
-  }
-  if (slide.layout === "quote") requireText(slide.quote ?? "", `${where} quote`, LIMITS.text);
-}
-
-function validateTestQuestion(q: Question) {
-  const id = requireText(q.id, "question id", 100);
-  const where = `question ${id}`;
-  requireText(q.prompt, `${where} prompt`, LIMITS.text);
-  requireText(q.explanation, `${where} explanation`, LIMITS.text);
-  q.options.forEach((o, i) => requireText(o, `${where} option ${i + 1}`, LIMITS.text));
-  const problem = validateQuestion(q);
-  if (problem) fail("INVALID", `${where}: ${problem}`);
 }
 
 // ---------------------------------------------------------------------------------------------

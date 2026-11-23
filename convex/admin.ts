@@ -2,6 +2,8 @@ import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import { requireAdmin } from "./lib/auth";
+import { deepEqual, invalid, requireText, TEXT_LIMIT, validateSlide, validateTestQuestion } from "./lib/contentValidation";
+import { languageValidator, questionValidator, slideValidator } from "./lib/engineTypes";
 import { courseStatusValidator, levelValidator, tierValidator } from "./schema";
 
 /**
@@ -145,8 +147,8 @@ export const createCourse = mutation({
 });
 
 export const updateCourse = mutation({
-  args: { courseId: v.id("courses"), ...courseFields },
-  handler: async (ctx, { courseId, ...args }) => {
+  args: { courseId: v.id("courses"), ...courseFields, language: v.optional(languageValidator) },
+  handler: async (ctx, { courseId, language, ...args }) => {
     await requireAdmin(ctx);
     const course = await ctx.db.get(courseId);
     if (!course) throw new ConvexError("NOT_FOUND");
@@ -154,6 +156,7 @@ export const updateCourse = mutation({
     await assertCourseSlugFree(ctx, args.slug, courseId);
     await ctx.db.patch(courseId, {
       ...args,
+      language: language ?? course.language,
       title: args.title.trim(),
       tags: cleanList(args.tags),
       outcomes: cleanList(args.outcomes),
@@ -267,5 +270,155 @@ export const reorderLessons = mutation({
       throw new ConvexError("INVALID_REORDER");
     }
     for (const [index, id] of lessonIds.entries()) await ctx.db.patch(id, { order: index + 1 });
+  },
+});
+
+// ---------------------------------------------------------------------------------------------
+// Content editing (chapters, slide decks, chapter tests). One deck row and one test row per chapter:
+// edits patch the existing row. Hand edits are by trusted admins, so no source-integrity scan runs
+// (unlike the engine saves); text is still checked for emptiness and length.
+// ---------------------------------------------------------------------------------------------
+
+const HAND_EDIT = { minSlides: 6, maxSlides: 20, maxQuestions: 50, maxAttemptsCap: 20 } as const;
+
+export const listChapters = query({
+  args: { courseId: v.id("courses") },
+  handler: async (ctx, { courseId }) => {
+    await requireAdmin(ctx);
+    const chapters = await ctx.db
+      .query("chapters")
+      .withIndex("by_course_order", (q) => q.eq("courseId", courseId))
+      .collect();
+    return await Promise.all(
+      chapters.map(async (chapter) => {
+        const lessons = await ctx.db
+          .query("lessons")
+          .withIndex("by_chapter_order", (q) => q.eq("chapterId", chapter._id))
+          .collect();
+        const deck = await ctx.db
+          .query("slideDecks")
+          .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
+          .unique();
+        const test = await ctx.db
+          .query("chapterTests")
+          .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
+          .unique();
+        return {
+          _id: chapter._id,
+          slug: chapter.slug,
+          title: chapter.title,
+          summary: chapter.summary,
+          order: chapter.order,
+          lessons: lessons.map((l) => ({ _id: l._id, title: l.title, order: l.order })),
+          hasDeck: deck !== null,
+          test: test && {
+            _id: test._id,
+            version: test.version,
+            questionCount: test.questions.length,
+            passPercent: test.passPercent,
+            maxAttempts: test.maxAttempts,
+          },
+        };
+      }),
+    );
+  },
+});
+
+export const updateChapter = mutation({
+  args: { chapterId: v.id("chapters"), title: v.optional(v.string()), summary: v.optional(v.string()) },
+  handler: async (ctx, { chapterId, title, summary }) => {
+    await requireAdmin(ctx);
+    if (!(await ctx.db.get(chapterId))) throw new ConvexError("NOT_FOUND");
+    await ctx.db.patch(chapterId, {
+      ...(title !== undefined && { title: requireText(title, "title", 300) }),
+      ...(summary !== undefined && { summary: summary.trim().slice(0, TEXT_LIMIT) }),
+    });
+  },
+});
+
+export const getDeck = query({
+  args: { chapterId: v.id("chapters") },
+  handler: async (ctx, { chapterId }) => {
+    await requireAdmin(ctx);
+    return await ctx.db
+      .query("slideDecks")
+      .withIndex("by_chapter", (q) => q.eq("chapterId", chapterId))
+      .unique();
+  },
+});
+
+/** Full test including `correct` and `explanation` (admin only). */
+export const getTest = query({
+  args: { chapterId: v.id("chapters") },
+  handler: async (ctx, { chapterId }) => {
+    await requireAdmin(ctx);
+    return await ctx.db
+      .query("chapterTests")
+      .withIndex("by_chapter", (q) => q.eq("chapterId", chapterId))
+      .unique();
+  },
+});
+
+export const updateDeck = mutation({
+  args: { chapterId: v.id("chapters"), slides: v.array(slideValidator) },
+  handler: async (ctx, { chapterId, slides }) => {
+    await requireAdmin(ctx);
+    const chapter = await ctx.db.get(chapterId);
+    if (!chapter) throw new ConvexError("NOT_FOUND");
+    if (slides.length < HAND_EDIT.minSlides || slides.length > HAND_EDIT.maxSlides) {
+      invalid(`a deck needs ${HAND_EDIT.minSlides}-${HAND_EDIT.maxSlides} slides, got ${slides.length}`);
+    }
+    slides.forEach((s, i) => validateSlide(s, i + 1));
+    const deck = await ctx.db
+      .query("slideDecks")
+      .withIndex("by_chapter", (q) => q.eq("chapterId", chapterId))
+      .unique();
+    if (deck) await ctx.db.patch(deck._id, { slides, updatedAt: Date.now() });
+    else {
+      await ctx.db.insert("slideDecks", { courseId: chapter.courseId, chapterId, slides, updatedAt: Date.now() });
+    }
+  },
+});
+
+/** Bumps `version` in place only when `questions` actually change; attempts keep their version. */
+export const updateTest = mutation({
+  args: {
+    chapterId: v.id("chapters"),
+    questions: v.optional(v.array(questionValidator)),
+    passPercent: v.optional(v.number()),
+    maxAttempts: v.optional(v.number()),
+  },
+  handler: async (ctx, { chapterId, questions, passPercent, maxAttempts }) => {
+    await requireAdmin(ctx);
+    const test = await ctx.db
+      .query("chapterTests")
+      .withIndex("by_chapter", (q) => q.eq("chapterId", chapterId))
+      .unique();
+    if (!test) throw new ConvexError("NOT_FOUND");
+    if (passPercent !== undefined && (!Number.isInteger(passPercent) || passPercent < 1 || passPercent > 100)) {
+      invalid("passPercent must be an integer from 1 to 100");
+    }
+    if (
+      maxAttempts !== undefined &&
+      (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > HAND_EDIT.maxAttemptsCap)
+    ) {
+      invalid(`maxAttempts must be an integer from 1 to ${HAND_EDIT.maxAttemptsCap}`);
+    }
+    let version = test.version;
+    if (questions !== undefined) {
+      if (questions.length < 1 || questions.length > HAND_EDIT.maxQuestions) {
+        invalid(`a test needs 1-${HAND_EDIT.maxQuestions} questions, got ${questions.length}`);
+      }
+      questions.forEach(validateTestQuestion);
+      const ids = questions.map((q) => q.id.trim());
+      if (new Set(ids).size !== ids.length) invalid("question ids must be unique");
+      if (!deepEqual(test.questions, questions)) version += 1;
+    }
+    await ctx.db.patch(test._id, {
+      ...(questions !== undefined && { questions, version }),
+      ...(passPercent !== undefined && { passPercent }),
+      ...(maxAttempts !== undefined && { maxAttempts }),
+    });
+    return { version };
   },
 });

@@ -350,3 +350,145 @@ describe("mux events and helpers", () => {
     for (const bad of ["", "A", "a_b", "a--b", "-a", "a-", "a b"]) expect(isKebabCase(bad)).toBe(false);
   });
 });
+
+describe("content editing", () => {
+  const q = (id: string, correct = [0]) => ({
+    id,
+    kind: "single" as const,
+    prompt: `Prompt ${id}`,
+    options: ["A", "B"],
+    correct,
+    explanation: "Because.",
+  });
+  const slide = (n: number) => ({
+    layout: "bullets" as const,
+    title: `Slide ${n}`,
+    bullets: ["one"],
+    notes: "notes",
+  });
+  const slides = (n: number) => Array.from({ length: n }, (_, i) => slide(i + 1));
+
+  async function seed() {
+    const { t, admin, courseId } = await setup();
+    const chapterId = await t.run(async (ctx) => {
+      const chapterId = await ctx.db.insert("chapters", {
+        courseId,
+        slug: "chapter-1",
+        title: "Chapter 1",
+        summary: "s",
+        order: 1,
+      });
+      await ctx.db.insert("lessons", { courseId, chapterId, order: 1, ...lesson });
+      await ctx.db.insert("slideDecks", { courseId, chapterId, slides: slides(6), updatedAt: 1 });
+      await ctx.db.insert("chapterTests", {
+        courseId,
+        chapterId,
+        version: 1,
+        passPercent: 70,
+        maxAttempts: 3,
+        questions: [q("a"), q("b")],
+      });
+      return chapterId;
+    });
+    return { t, admin, courseId, chapterId };
+  }
+  const rows = (t: ReturnType<typeof makeT>) =>
+    t.run(async (ctx) => ({
+      tests: await ctx.db.query("chapterTests").collect(),
+      decks: await ctx.db.query("slideDecks").collect(),
+    }));
+
+  it("rejects non-admins on every editing function", async () => {
+    const { t, courseId, chapterId } = await seed();
+    for (const who of [t, asUser(t)]) {
+      const reject = (p: Promise<unknown>) =>
+        expect(p).rejects.toThrow(/UNAUTHENTICATED|FORBIDDEN/);
+      await reject(who.query(api.admin.listChapters, { courseId }));
+      await reject(who.query(api.admin.getDeck, { chapterId }));
+      await reject(who.query(api.admin.getTest, { chapterId }));
+      await reject(who.mutation(api.admin.updateChapter, { chapterId, title: "x" }));
+      await reject(who.mutation(api.admin.updateDeck, { chapterId, slides: slides(6) }));
+      await reject(who.mutation(api.admin.updateTest, { chapterId, passPercent: 80 }));
+    }
+  });
+
+  it("lists chapters in order with lessons, deck flag and test summary", async () => {
+    const { t, admin, courseId } = await seed();
+    await t.run((ctx) =>
+      ctx.db.insert("chapters", { courseId, slug: "chapter-0", title: "Zero", summary: "", order: 0 }),
+    );
+    const list = await admin.query(api.admin.listChapters, { courseId });
+    expect(list.map((c) => c.title)).toEqual(["Zero", "Chapter 1"]);
+    expect(list[0]).toMatchObject({ hasDeck: false, test: null, lessons: [] });
+    expect(list[1].hasDeck).toBe(true);
+    expect(list[1].lessons).toMatchObject([{ title: "Hello" }]);
+    expect(list[1].test).toMatchObject({ version: 1, questionCount: 2, passPercent: 70, maxAttempts: 3 });
+  });
+
+  it("updates chapter title and summary, rejecting empty titles", async () => {
+    const { admin, courseId, chapterId } = await seed();
+    await admin.mutation(api.admin.updateChapter, { chapterId, title: " New ", summary: "Sum" });
+    const [c] = await admin.query(api.admin.listChapters, { courseId });
+    expect(c).toMatchObject({ title: "New", summary: "Sum" });
+    await expect(admin.mutation(api.admin.updateChapter, { chapterId, title: " " })).rejects.toThrow("INVALID");
+  });
+
+  it("updateTest bumps the version only when questions change, on the one row", async () => {
+    const { t, admin, chapterId } = await seed();
+    await admin.mutation(api.admin.updateTest, { chapterId, passPercent: 80, maxAttempts: 5 });
+    let test = await admin.query(api.admin.getTest, { chapterId });
+    expect(test).toMatchObject({ version: 1, passPercent: 80, maxAttempts: 5 });
+    // identical questions: no bump
+    await admin.mutation(api.admin.updateTest, { chapterId, questions: [q("a"), q("b")] });
+    expect((await admin.query(api.admin.getTest, { chapterId }))?.version).toBe(1);
+    await admin.mutation(api.admin.updateTest, { chapterId, questions: [q("a"), q("b", [1])] });
+    test = await admin.query(api.admin.getTest, { chapterId });
+    expect(test?.version).toBe(2);
+    expect(test?.questions[1].correct).toEqual([1]);
+    expect((await rows(t)).tests).toHaveLength(1);
+  });
+
+  it("updateTest rejects invalid questions and settings", async () => {
+    const { admin, chapterId } = await seed();
+    const bad = (questions: unknown[]) =>
+      expect(admin.mutation(api.admin.updateTest, { chapterId, questions: questions as never })).rejects.toThrow("INVALID");
+    await bad([{ ...q("a"), correct: [5] }]);
+    await bad([{ ...q("a"), correct: [0, 1] }]);
+    await bad([{ ...q("a"), prompt: "  " }]);
+    await bad([{ ...q("a"), options: ["A", ""] }]);
+    await bad([{ ...q("a"), explanation: "" }]);
+    await bad([q("a"), q("a")]);
+    await bad([]);
+    for (const patch of [{ passPercent: 0 }, { passPercent: 101 }, { maxAttempts: 0 }, { maxAttempts: 21 }, { maxAttempts: 1.5 }]) {
+      await expect(admin.mutation(api.admin.updateTest, { chapterId, ...patch })).rejects.toThrow("INVALID");
+    }
+    expect((await admin.query(api.admin.getTest, { chapterId }))?.version).toBe(1);
+  });
+
+  it("getTest and getDeck return full data including correct answers", async () => {
+    const { admin, chapterId } = await seed();
+    const test = await admin.query(api.admin.getTest, { chapterId });
+    expect(test?.questions[0]).toMatchObject({ correct: [0], explanation: "Because." });
+    const deck = await admin.query(api.admin.getDeck, { chapterId });
+    expect(deck?.slides).toHaveLength(6);
+  });
+
+  it("updateDeck patches the one row and enforces 6-20 slides", async () => {
+    const { t, admin, chapterId } = await seed();
+    await admin.mutation(api.admin.updateDeck, { chapterId, slides: slides(20) });
+    expect((await rows(t)).decks).toHaveLength(1);
+    expect((await admin.query(api.admin.getDeck, { chapterId }))?.slides).toHaveLength(20);
+    for (const n of [5, 21]) {
+      await expect(admin.mutation(api.admin.updateDeck, { chapterId, slides: slides(n) })).rejects.toThrow("INVALID");
+    }
+    await expect(
+      admin.mutation(api.admin.updateDeck, { chapterId, slides: [{ ...slide(1), bullets: [] }, ...slides(5)] }),
+    ).rejects.toThrow("INVALID");
+  });
+
+  it("updateCourse accepts language", async () => {
+    const { admin, courseId } = await setup();
+    await admin.mutation(api.admin.updateCourse, { courseId, ...course, language: "he" });
+    expect((await admin.query(api.admin.getCourse, { courseId }))?.course.language).toBe("he");
+  });
+});
