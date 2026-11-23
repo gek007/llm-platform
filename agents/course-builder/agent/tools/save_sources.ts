@@ -16,7 +16,7 @@ export default defineTool({
           title: z.string().trim().min(1).max(300).describe("The page's real title."),
           kind: z.enum(["web", "pdf", "youtube", "text"]),
           resourceId: z.string().min(1).optional().describe("Set when the source is one of the admin's URL or YouTube resources."),
-          excerpt: z.string().max(5000).optional().describe("Key facts or a short quote you relied on, for the chapter writers."),
+          excerpt: z.string().max(5000).optional().describe("Always set it: the key facts, figures and any short quote (word for word) the chapter writers need. They see only this, its first 1,500 characters."),
         }),
       )
       .min(1)

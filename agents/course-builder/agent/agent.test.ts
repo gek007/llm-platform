@@ -36,6 +36,7 @@ describe("course-builder agent configuration", () => {
       "report_progress",
       "primary and official sources",
       "course language",
+      "Always write a useful excerpt",
     ]) {
       expect(text).toContain(needle);
     }

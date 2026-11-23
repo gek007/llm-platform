@@ -116,7 +116,8 @@ export type JobBrief = {
     text?: string;
     readStatus: ReadStatus;
   }[];
-  sources: { id: string; url: string; title: string; kind: SourceKind }[];
+  /** `excerpt`: the key facts the research phase saved with the source (the writers' only view of it). */
+  sources: { id: string; url: string; title: string; kind: SourceKind; excerpt?: string }[];
   /** The approved (or proposed) outline; frozen history once the course exists. */
   outline?: Outline;
   /** The draft course skeleton and what is already written, once the outline is approved. */
@@ -126,7 +127,8 @@ export type JobBrief = {
       order: number;
       title: string;
       summary: string;
-      subchapters: { order: number; title: string; hasBody: boolean }[];
+      /** `summary`: the lesson row's summary (the outline goal at approval, then what was written). */
+      subchapters: { order: number; title: string; summary: string; hasBody: boolean }[];
       hasDeck: boolean;
       hasTest: boolean;
     }[];

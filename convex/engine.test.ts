@@ -163,9 +163,26 @@ describe("getJob", () => {
     expect(course.chapters).toHaveLength(2);
     expect(course.chapters[0]).toMatchObject({ order: 1, hasDeck: false, hasTest: false });
     expect(course.chapters[0].subchapters).toEqual([
-      { order: 1, title: "S1.1", hasBody: false },
-      { order: 2, title: "S1.2", hasBody: false },
+      { order: 1, title: "S1.1", summary: "goal S1.1", hasBody: false },
+      { order: 2, title: "S1.2", summary: "goal S1.2", hasBody: false },
     ]);
+  });
+  it("returns each source's saved excerpt (the chapter writers' only view of it)", async () => {
+    const t = makeT();
+    const jobId = await researchingJob(t);
+    await post(t, "saveSources", {
+      jobId,
+      sources: [
+        { url: "https://docs.example.com/guide", title: "Guide", kind: "web", excerpt: "RAG retrieves passages first." },
+        { url: "https://docs.example.com/faq", title: "FAQ", kind: "web" },
+      ],
+    });
+    const { json } = await post(t, "getJob", { jobId });
+    expect(json.sources).toEqual([
+      expect.objectContaining({ url: "https://docs.example.com/guide", excerpt: "RAG retrieves passages first." }),
+      expect.not.objectContaining({ excerpt: expect.anything() }),
+    ]);
+    expect((json.sources as Json[])[1]).toMatchObject({ url: "https://docs.example.com/faq", title: "FAQ" });
   });
 });
 

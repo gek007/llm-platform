@@ -263,6 +263,7 @@ export const getJob = internalQuery({
       url: s.url,
       title: s.title,
       kind: s.kind,
+      excerpt: s.excerpt,
     }));
 
     let course;
@@ -291,6 +292,7 @@ export const getJob = internalQuery({
               subchapters: (await chapterLessons(ctx, ch._id)).map((l, i) => ({
                 order: i + 1,
                 title: l.title,
+                summary: l.summary,
                 hasBody: l.body.trim() !== "",
               })),
               hasDeck: deck !== null,

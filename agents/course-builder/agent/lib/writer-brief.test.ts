@@ -29,7 +29,7 @@ function job(over: Partial<JobBrief> = {}): JobBrief {
     sources: [
       { id: "src-a", url: "https://www.consumerfinance.gov/budget", title: "Make a budget", kind: "web", excerpt: "List income, then fixed costs." },
       { id: "src-b", url: "https://www.youtube.com/watch?v=abcdefghijk", title: "Envelope method", kind: "youtube" },
-    ] as JobBrief["sources"],
+    ],
     outline: {
       chapters: [
         { title: "Why budget", goal: "Explain why a budget helps", subchapters: [{ title: "Money in, money out", goal: "Tell income from spending", resourceIds: ["res-other"] }] },
@@ -48,20 +48,20 @@ function job(over: Partial<JobBrief> = {}): JobBrief {
     course: {
       courseId: "course1",
       chapters: [
-        { order: 1, title: "Why budget", summary: "Explain why a budget helps", subchapters: [{ order: 1, title: "Money in, money out", hasBody: false }], hasDeck: false, hasTest: false },
+        { order: 1, title: "Why budget", summary: "Explain why a budget helps", subchapters: [{ order: 1, title: "Money in, money out", summary: "Tell income from spending", hasBody: false }], hasDeck: false, hasTest: false },
         {
           order: 2,
           title: "Build your first budget",
           summary: "Build a monthly budget from scratch",
           subchapters: [
-            { order: 1, title: "List your income", hasBody: false },
-            { order: 2, title: "Track your spending", hasBody: false },
-            { order: 3, title: "Balance it", hasBody: false },
+            { order: 1, title: "List your income", summary: "Add up every monthly income source", hasBody: false },
+            { order: 2, title: "Track your spending", summary: "Sort a week of expenses into categories", hasBody: false },
+            { order: 3, title: "Balance it", summary: "Adjust spending until the budget balances", hasBody: false },
           ],
           hasDeck: false,
           hasTest: false,
         },
-        { order: 3, title: "Stick with it", summary: "Keep a budget going", subchapters: [{ order: 1, title: "Review monthly", hasBody: false }], hasDeck: false, hasTest: false },
+        { order: 3, title: "Stick with it", summary: "Keep a budget going", subchapters: [{ order: 1, title: "Review monthly", summary: "Run a monthly review", hasBody: false }], hasDeck: false, hasTest: false },
       ],
     },
     ...over,
@@ -110,6 +110,47 @@ describe("buildWriterBrief", () => {
     expect(brief).not.toContain("Investing primer");
     expect(brief).not.toContain("res-broken");
     expect(brief).not.toContain("api/storage");
+  });
+
+  test("after the admin renames and reorders lessons, goals come from the rows and unmatched planned resources go to chapter level", () => {
+    const base = job();
+    const chapters = base.course!.chapters.map((c) =>
+      c.order !== 2
+        ? c
+        : {
+            ...c,
+            subchapters: [
+              { order: 1, title: "Track your spending", summary: "Sort a week of expenses into categories", hasBody: false },
+              { order: 2, title: "Your income sources", summary: "Name every income source and add them up", hasBody: false },
+              { order: 3, title: "Balance it", summary: "Adjust spending until the budget balances", hasBody: false },
+            ],
+          },
+    );
+    const brief = buildWriterBrief({ ...base, course: { ...base.course!, chapters } }, 2);
+    expect(brief).toContain("- 2.1 Track your spending (subchapterOrder 1) — goal: Sort a week of expenses into categories");
+    expect(brief).toContain("- 2.2 Your income sources (subchapterOrder 2) — goal: Name every income source and add them up");
+    // The frozen outline's goal for the renamed lesson is not used.
+    expect(brief).not.toContain("Add up every monthly income source");
+    // Exact title match keeps the video and text on "Track your spending", now 2.1.
+    expect(brief).toContain('- Subchapter 2.1, YouTube video "Budgeting in 5 minutes"');
+    expect(brief).toContain('- Subchapter 2.1, Text "Teacher\'s checklist"');
+    // The renamed lesson's PDF lands at chapter level, never on a neighbour by position.
+    expect(brief).toContain('- Chapter 2, planned for "List your income", PDF "Budget guide"');
+    expect(brief).not.toMatch(/Subchapter 2\.\d, PDF "Budget guide"/);
+    expect(brief).toContain('```resource\n{"resourceId":"res-pdf"}\n```');
+  });
+
+  test("caps each source excerpt in the brief", () => {
+    const long = `${"Fact. ".repeat(300)}TAILMARK`;
+    const brief = buildWriterBrief(job({ sources: [{ id: "src-l", url: "https://example.org/l", title: "Long", kind: "web", excerpt: long }] }), 2);
+    expect(brief).toContain(`[src-l] Long — https://example.org/l — ${long.slice(0, 1_500).trim()}…`);
+    expect(brief).not.toContain("TAILMARK");
+  });
+
+  test("restricts quotes and citations to what the brief shows", () => {
+    const brief = buildWriterBrief(job(), 2);
+    expect(brief).toMatch(/quote.*word for word/i);
+    expect(brief).toMatch(/never attribute a specific figure or quote/i);
   });
 
   test("a chapter without planned resources says there is nothing to embed", () => {

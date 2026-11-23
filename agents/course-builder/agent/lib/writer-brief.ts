@@ -25,21 +25,29 @@ const LANGUAGES: Record<Language, { name: string; trueFalse: [string, string] }>
   ru: { name: "Russian", trueFalse: ["Верно", "Неверно"] },
 };
 
-/** Pasted text shown to the writer so it can introduce the resource; the full text stays on the platform. */
+/**
+ * Per-item text caps that keep the brief bounded: a pasted-text preview (the full text stays on the
+ * platform) and a source excerpt (the engine stores up to 5 000 characters; writers see the first
+ * 1 500, which is all they may quote or rely on).
+ */
 const TEXT_PREVIEW = 1_500;
+const EXCERPT_PREVIEW = 1_500;
 
-type Source = JobBrief["sources"][number] & { excerpt?: string };
 type Resource = JobBrief["resources"][number];
 
 /**
  * The message that starts one chapter-writer run: the course brief, the chapter's plan, the job's
- * saved sources, the admin resources planned for this chapter (with ready-to-paste embed blocks)
- * and the save rules. Pure and deterministic.
+ * saved sources (with excerpts), the admin resources planned for this chapter (with ready-to-paste
+ * embed blocks) and the save rules. Pure and deterministic.
  *
- * Titles come from the course skeleton (the admin may have edited them after approval); goals and
- * planned `resourceIds` come from the outline, matched by title and falling back to position.
- * Only readable resources planned for this chapter's subchapters are offered: PDFs, pasted text and
- * web pages as ```resource blocks (never a storage URL), YouTube as a ```youtube block.
+ * Titles and goals come from the course rows (`summary` holds the outline goal from approval and
+ * follows the admin's renames and reorders). Planned `resourceIds` exist only in the frozen outline:
+ * the outline chapter is matched by title, else by order (chapters are never reordered); within it a
+ * resource goes to the subchapter with exactly the same title, and resources of outline subchapters
+ * that match no lesson are offered at chapter level, tagged with the outline title, for the writer
+ * to place. Never by position, so a resource can't land on a neighbouring lesson.
+ * Only readable resources are offered: PDFs, pasted text and web pages as ```resource blocks (never
+ * a storage URL), YouTube as a ```youtube block.
  */
 export function buildWriterBrief(job: JobBrief, chapterOrder: number): string {
   const chapter = job.course?.chapters.find((c) => c.order === chapterOrder);
@@ -47,24 +55,27 @@ export function buildWriterBrief(job: JobBrief, chapterOrder: number): string {
   const lang = LANGUAGES[job.language];
   const trueFalse = JSON.stringify(lang.trueFalse);
 
-  const planned = pick(job.outline?.chapters ?? [], chapter.title, chapterOrder - 1);
-  const subchapters = chapter.subchapters.map((s) => {
-    const plan = pick(planned?.subchapters ?? [], s.title, s.order - 1);
-    return { ...s, goal: plan?.goal, resourceIds: plan?.resourceIds ?? [] };
-  });
-
+  const outlineChapters = job.outline?.chapters ?? [];
+  const planned =
+    outlineChapters.find((c) => sameTitle(c.title, chapter.title)) ?? outlineChapters[chapterOrder - 1];
   const resourcesById = new Map(job.resources.map((r) => [r.id, r]));
-  const embeds = subchapters.flatMap((s) =>
-    s.resourceIds.flatMap((id) => {
+  const embeds = (planned?.subchapters ?? []).flatMap((p) => {
+    const lesson = chapter.subchapters.find((s) => sameTitle(s.title, p.title));
+    const at = lesson
+      ? { order: lesson.order, label: `Subchapter ${chapterOrder}.${lesson.order}` }
+      : { order: Infinity, label: `Chapter ${chapterOrder}, planned for "${oneLine(p.title)}"` };
+    return (p.resourceIds ?? []).flatMap((id) => {
       const r = resourcesById.get(id);
       const block = r ? embedBlock(r) : null;
-      return r && block ? [{ at: `${chapterOrder}.${s.order}`, r, block }] : [];
-    }),
-  );
+      return r && block ? [{ ...at, r, block }] : [];
+    });
+  });
+  // Subchapter placements in lesson order first, then the chapter-level ones (stable sort).
+  embeds.sort((a, b) => a.order - b.order);
 
-  const sources = (job.sources as Source[]).map((s) => {
+  const sources = job.sources.map((s) => {
     const parts = [`[${s.id}] ${oneLine(s.title)}`, s.url];
-    if (s.excerpt?.trim()) parts.push(oneLine(s.excerpt));
+    if (s.excerpt?.trim()) parts.push(preview(s.excerpt, EXCERPT_PREVIEW));
     let line = `- ${parts.join(" — ")}`;
     const videoId = s.kind === "youtube" ? youtubeIdFromUrl(s.url) : null;
     if (videoId) line += `\n  Embeddable video, block:\n${fence("youtube", { videoId, title: s.title })}`;
@@ -98,8 +109,9 @@ export function buildWriterBrief(job: JobBrief, chapterOrder: number): string {
     "",
     `Subchapters (save each with chapterOrder ${chapterOrder} and its subchapterOrder, in the course language):`,
     "",
-    ...subchapters.map(
-      (s) => `- ${chapterOrder}.${s.order} ${s.title} (subchapterOrder ${s.order})${s.goal ? ` — goal: ${s.goal}` : ""}`,
+    ...chapter.subchapters.map(
+      (s) =>
+        `- ${chapterOrder}.${s.order} ${s.title} (subchapterOrder ${s.order})${s.summary.trim() ? ` — goal: ${oneLine(s.summary)}` : ""}`,
     ),
     "",
     "## Sources",
@@ -107,7 +119,7 @@ export function buildWriterBrief(job: JobBrief, chapterOrder: number): string {
   );
   if (sources.length > 0) {
     out.push(
-      "These are the only sources you may cite or link. Pass the ids you cite in that subchapter's `sourceIds`; in the body, `[n]` is the n-th id in that `sourceIds` list (`[1]` is the first). Link only to these URLs.",
+      "These are the only sources you may cite or link. Pass the ids you cite in that subchapter's `sourceIds`; in the body, `[n]` is the n-th id in that `sourceIds` list (`[1]` is the first). Link only to these URLs. The excerpt is all you know of a source: cite `[n]` only for claims its excerpt (or, without one, its title) clearly supports, and never attribute a specific figure or quote to a source whose excerpt doesn't contain it.",
       "",
       ...sources,
     );
@@ -117,11 +129,11 @@ export function buildWriterBrief(job: JobBrief, chapterOrder: number): string {
   out.push("", "## Resources you may embed", "");
   if (embeds.length > 0) {
     out.push(
-      "Admin resources planned for this chapter. Embed one only in its subchapter and only when it clearly helps, by pasting its block exactly as shown (one fenced block on its own lines). These are not `[n]` sources.",
+      "Admin resources planned for this chapter. Embed one only in its subchapter (one marked \"Chapter N, planned for ...\" was planned for a lesson that has since been renamed or removed: put it in the subchapter where it fits best, or leave it out) and only when it clearly helps, by pasting its block exactly as shown (one fenced block on its own lines). These are not `[n]` sources.",
       "",
-      ...embeds.map(({ at, r, block }) => {
-        let line = `- Subchapter ${at}, ${KIND_LABEL[r.kind]} "${oneLine(r.title)}"`;
-        if (r.kind === "text" && r.text?.trim()) line += `\n  Text: ${preview(r.text)}`;
+      ...embeds.map(({ label, r, block }) => {
+        let line = `- ${label}, ${KIND_LABEL[r.kind]} "${oneLine(r.title)}"`;
+        if (r.kind === "text" && r.text?.trim()) line += `\n  Text: ${preview(r.text, TEXT_PREVIEW)}`;
         return `${line}\n  Block:\n${block}`;
       }),
     );
@@ -133,7 +145,7 @@ export function buildWriterBrief(job: JobBrief, chapterOrder: number): string {
     "## Rules",
     "",
     "- Each subchapter: a markdown body with 1-3 ```quiz blocks, a one-line summary and durationMinutes (whole minutes of study).",
-    "- Slide deck: 6-12 slides, varied layouts, speaker notes of 2-4 sentences on every slide.",
+    "- Slide deck: 6-12 slides, varied layouts, speaker notes of 2-4 sentences on every slide. Use a `quote` slide only for text copied word for word from a source excerpt or pasted-text preview in this brief, with that source or resource as `attribution`; otherwise use no quote slides.",
     `- Test: 8-10 questions answerable from this chapter's subchapters, mixing single, multiple and true_false. True/False options are exactly ${trueFalse}.`,
     "- No raw URLs in titles, summaries, slides or test questions: those are plain text and any unknown http(s) URL is rejected.",
     '- On a save error ("CODE: detail" or "Unknown reference: X"), fix what it names and save again, at most 2 retries per save; then list it in `problems`.',
@@ -163,16 +175,15 @@ function fence(lang: "youtube" | "resource", body: object): string {
   return `\`\`\`${lang}\n${JSON.stringify(body)}\n\`\`\``;
 }
 
-/** The outline item with this title, else the one at this position. */
-function pick<T extends { title: string }>(items: T[], title: string, index: number): T | undefined {
-  return items.find((i) => i.title.trim() === title.trim()) ?? items[index];
+function sameTitle(a: string, b: string): boolean {
+  return a.trim() === b.trim();
 }
 
 function oneLine(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-function preview(text: string): string {
+function preview(text: string, max: number): string {
   const flat = oneLine(text);
-  return flat.length > TEXT_PREVIEW ? `${flat.slice(0, TEXT_PREVIEW)}…` : flat;
+  return flat.length > max ? `${flat.slice(0, max).trimEnd()}…` : flat;
 }

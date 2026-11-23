@@ -22,7 +22,7 @@ Every save overwrites what is saved at that place, so a repeated save is safe. N
 
 ## Subchapters
 
-- Title (plain text, may refine the brief's title), a one-line summary (plain text) and `durationMinutes` (whole minutes a learner needs, usually 5-20).
+- Title: the subchapter's title from the brief, unchanged (plain text; the platform matches planned resources by title). A one-line summary (plain text) and `durationMinutes` (whole minutes a learner needs, usually 5-20).
 - The body is markdown: clear, accurate and concrete, with examples, reaching the subchapter's goal from the brief. Use headings, lists, tables and code blocks where they help.
 - Add 1-3 practice ```quiz blocks per subchapter, each on its own lines, in this exact format (`answer` is the 0-based index of the correct option):
 
@@ -37,17 +37,19 @@ Every save overwrites what is saved at that place, so a repeated save is safe. N
 ## Sources and citations
 
 - Use only the sources in the brief. Never invent a link, a title, a quote or a statistic. Link only to URLs listed in the brief's sources.
+- A source's excerpt in the brief is all you know of it. Cite `[n]` only for claims its excerpt (or, if it has none, its title) clearly supports, and never attribute a specific figure or quote to a source whose excerpt doesn't contain it. General explanations you write yourself need no citation.
 - **Citation rule:** `sourceIds` in `save_subchapter` is the list of the brief's source ids this lesson cites, and `[n]` in the body means the n-th id in that list: `[1]` is `sourceIds[0]`, `[2]` is `sourceIds[1]`, and so on. Number each lesson from `[1]`. Every `[n]` must have its id in `sourceIds`; pass `sourceIds: []` when the lesson cites nothing. The platform lists the lesson's sources under it in that order.
 - Admin PDFs and pasted text are never sources and never `[n]`: pasted text has no URL and a PDF's file URL is private storage that must never appear anywhere. They are placed only with their ```resource block.
 
 ## Embeds
 
-- Embed only what the brief lists, and only when it clearly helps the lesson: an admin resource in the subchapter it is planned for, or a YouTube source by its video ID. Paste the block exactly as the brief shows it, on its own lines (```resource with a `resourceId`, ```youtube with a `videoId` and `title`).
+- Embed only what the brief lists, and only when it clearly helps the lesson: an admin resource in the subchapter it is planned for, or a YouTube source by its video ID. A resource listed as "Chapter N, planned for ..." was planned for a lesson that was renamed or removed: put it in the subchapter where it fits best, or leave it out. Paste the block exactly as the brief shows it, on its own lines (```resource with a `resourceId`, ```youtube with a `videoId` and `title`).
 - Never write a ```resource or ```youtube block the brief does not give you. You never see a video's content, so never describe what a video says beyond its title.
 
 ## Slide deck
 
-- 6-12 slides covering the chapter, with varied layouts: `title` (opening), `bullets`, `two-column` (comparisons), `quote` (a real quote from a source, with `attribution`), `summary` (closing).
+- 6-12 slides covering the chapter, with varied layouts: `title` (opening), `bullets`, `two-column` (comparisons), `quote`, `summary` (closing).
+- Use a `quote` slide only for text copied word for word from a source excerpt or a pasted-text preview shown in the brief, with that source's or resource's title as `attribution`. Never quote from memory or paraphrase inside quote marks; if the brief has nothing worth quoting, use no quote slides.
 - Every slide has speaker notes of 2-4 sentences: the narration a presenter would say, not a copy of the bullets.
 - Keep bullets short (a line each, 3-6 per slide).
 
