@@ -103,6 +103,20 @@ The agent's phases follow the command it gets (every command starts with `get_jo
 
 `convex/lib/sourceScan.ts` parses lesson markdown the way the renderer does. Every http(s) link must be a source the engine saved (`saveSources`, from pages it read); unknown URLs, including raw URLs in slide and test text, are rejected with "Unknown reference: <ref>". ```youtube / ```resource blocks must reference saved resources; pasted-text resources cannot be cited as `[n]`. Engine saves are accepted only in `writing` (or `failed`, which resumes) and are refused with `BAD_STATE` "Course is published; unpublish it to let the engine write" once the course is published. Regenerating a published course is likewise refused ("Unpublish the course to regenerate"), so AI content never lands in a live course.
 
+## Admin review (course editor)
+
+`/admin/courses/[courseId]` shows the course details form (now with a **Language** select) and two tabs.
+
+- **Content** (`ChaptersPanel`): one card per chapter with editable title and summary (`admin.updateChapter`), its lessons (links to the existing lesson editor), and buttons that open the **deck editor** and the **test editor**. A course with no chapters (hand-made) keeps the plain lessons list.
+- **Deck editor** (`DeckEditor`, `admin.getDeck` / `updateDeck`): slide list with move up/down, delete and add; per-slide layout, title, the fields that layout uses (subtitle, bullets, two columns, quote and attribution), speaker notes, and a live preview with the shared `Slide` component. 6 to 20 slides; switching layout drops fields the layout does not use on save.
+- **Test editor** (`TestEditor`, `admin.getTest` / `updateTest`): questions with kind, prompt, options, correct toggles and explanation, pass mark (1-100) and max attempts (1-20). It checks every question with the server's `validateQuestion`, so a `single` question with two correct answers cannot be saved. A notice states that saving changed question content creates a new version (earlier passes still count; pass mark and attempts alone do not bump it).
+- **Results** (`ResultsTable`, `tests.resultsForCourse`): learners by chapter tests, each cell showing best score, passed or not, and attempts.
+- Content fields use `dir="auto"` and the container follows the course language (`he` is RTL); the admin chrome stays English. Server errors (`INVALID: <detail>`) are shown to the admin as-is.
+
+### Regenerate (admin)
+
+Generated courses (those with a `generationJobId`) get a **Regenerate** button on each lesson, the deck, the test and the chapter. The dialog needs an instruction (1 to 500 characters) and posts `{ jobId, target, instruction }` to `/api/course-builder/regenerate` through the shared `postAction`. While the job is `writing` the panel shows "Regenerating…" with the latest job event and disables the buttons. A published course is refused: the route answers 409 with "Unpublish the course to regenerate" and the dialog shows it. Hand-made courses have no regenerate controls.
+
 ## eve spike results (2026-11-23)
 
 Throwaway spike (Task 16) on branch `spike/course-builder` (never merged), agent at `agents/spike/` there, run with `eve dev --agent spike --no-ui` (eve 1.3.0, port 2000). Root model `anthropic("claude-opus-5-5")` with `reasoning: "low"`; the fan-out children use `anthropic("claude-haiku-5-5")` (works with the direct Anthropic provider). All four checks pass; approach B is not needed.

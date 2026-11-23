@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { errorMessage, isKebabCase, slugify } from "./admin-utils";
 import { FormField, SelectField, StatusMessage, Textarea } from "./admin-fields";
+import type { Language } from "../../../convex/lib/engineTypes";
 import { StringListEditor } from "./string-list-editor";
 
 type Course = Doc<"courses">;
@@ -18,6 +19,11 @@ const levels = ["beginner", "intermediate", "advanced"].map((v) => ({ value: v, 
 const tiers = [
   { value: "free", label: "Free" },
   { value: "pro", label: "Pro" },
+];
+const languages = [
+  { value: "en", label: "English" },
+  { value: "he", label: "Hebrew" },
+  { value: "ru", label: "Russian" },
 ];
 const statuses = ["draft", "published", "archived"].map((v) => ({ value: v, label: v }));
 
@@ -35,6 +41,7 @@ export function CourseForm({ course }: { course?: Course }) {
   const [level, setLevel] = useState<Course["level"]>(course?.level ?? "beginner");
   const [tier, setTier] = useState<Course["tier"]>(course?.tier ?? "free");
   const [status, setStatus] = useState<Course["status"]>(course?.status ?? "draft");
+  const [language, setLanguage] = useState<Language>(course?.language ?? "en");
   const [tags, setTags] = useState<string[]>(course?.tags ?? []);
   const [outcomes, setOutcomes] = useState<string[]>(course?.outcomes ?? []);
   const [coverImageUrl, setCoverImageUrl] = useState(course?.coverImageUrl ?? "");
@@ -75,7 +82,7 @@ export function CourseForm({ course }: { course?: Course }) {
     setSaving(true);
     try {
       if (course) {
-        await update({ courseId: course._id, ...payload });
+        await update({ courseId: course._id, ...payload, language });
         setFeedback({ kind: "success", text: "Course saved." });
       } else {
         const id = await create(payload);
@@ -124,7 +131,7 @@ export function CourseForm({ course }: { course?: Course }) {
           className="font-mono"
         />
       </FormField>
-      <div className="grid gap-5 sm:grid-cols-3">
+      <div className={`grid gap-5 ${course ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
         <FormField label="Level" htmlFor="course-level">
           <SelectField
             id="course-level"
@@ -141,6 +148,16 @@ export function CourseForm({ course }: { course?: Course }) {
             onChange={(e) => setTier(e.target.value as Course["tier"])}
           />
         </FormField>
+        {course ? (
+          <FormField label="Language" htmlFor="course-language" hint="Language of the course content.">
+            <SelectField
+              id="course-language"
+              options={languages}
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as Language)}
+            />
+          </FormField>
+        ) : null}
         <FormField label="Status" htmlFor="course-status">
           <SelectField
             id="course-status"
