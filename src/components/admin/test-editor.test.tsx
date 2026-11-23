@@ -88,4 +88,42 @@ describe("TestEditor", () => {
     });
     expect((updateTest.mock.calls[0][0] as { passPercent: number }).passPercent).toBe(60);
   });
+
+  test("paused while regenerating: Save is disabled with a notice", () => {
+    render(<TestEditor chapterId={"ch1" as never} language="en" paused />);
+    expect(screen.getByText("Regenerating — editing is paused")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save test" })).toBeDisabled();
+  });
+
+  test("a new version while clean refreshes; while dirty it warns and keeps edits", async () => {
+    const user = userEvent.setup();
+    const next = { _id: "t1", version: 3, passPercent: 70, maxAttempts: 3, questions: questions.map((q) => ({ ...q, prompt: `R ${q.prompt}` })) };
+    const clean = render(<TestEditor chapterId={"ch1" as never} language="en" />);
+    data.getTest = next;
+    clean.rerender(<TestEditor chapterId={"ch1" as never} language="en" />);
+    expect(screen.getByLabelText("Question 1 prompt")).toHaveValue("R Pick one");
+    clean.unmount();
+
+    data.getTest = { _id: "t1", version: 2, passPercent: 70, maxAttempts: 3, questions };
+    const dirty = render(<TestEditor chapterId={"ch1" as never} language="en" />);
+    await user.type(screen.getByLabelText("Question 1 prompt"), "?");
+    data.getTest = next;
+    dirty.rerender(<TestEditor chapterId={"ch1" as never} language="en" />);
+    expect(screen.getByText(/changed on the server/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Question 1 prompt")).toHaveValue("Pick one?");
+    await user.click(screen.getByRole("button", { name: "Discard my changes and reload" }));
+    expect(screen.getByLabelText("Question 1 prompt")).toHaveValue("R Pick one");
+  });
+
+  test("keeps the Test saved confirmation after a content save bumps the version", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<TestEditor chapterId={"ch1" as never} language="en" />);
+    await user.type(screen.getByLabelText("Question 1 prompt"), "?");
+    await user.click(screen.getByRole("button", { name: "Save test" }));
+    expect(await screen.findByText("Test saved.")).toBeInTheDocument();
+    data.getTest = { _id: "t1", version: 3, passPercent: 70, maxAttempts: 3, questions: [{ ...questions[0], prompt: "Pick one?" }, questions[1]] };
+    rerender(<TestEditor chapterId={"ch1" as never} language="en" />);
+    expect(screen.getByText("Test saved.")).toBeInTheDocument();
+    expect(screen.queryByText(/changed on the server/)).not.toBeInTheDocument();
+  });
 });

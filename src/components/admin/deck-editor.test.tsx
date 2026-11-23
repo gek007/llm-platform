@@ -88,4 +88,45 @@ describe("DeckEditor", () => {
     });
     expect((updateDeck.mock.calls[0][0] as { slides: unknown[] }).slides).toHaveLength(7);
   });
+
+  test("paused while regenerating: Save is disabled with a notice", () => {
+    render(<DeckEditor chapterId={"ch1" as never} language="en" paused />);
+    expect(screen.getByText("Regenerating — editing is paused")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save deck" })).toBeDisabled();
+  });
+
+  test("a server change while clean refreshes to the server copy", () => {
+    const { rerender } = render(<DeckEditor chapterId={"ch1" as never} language="en" />);
+    data.getDeck = { _id: "d1", slides: slides.map((s) => ({ ...s, title: `R-${s.title}` })) };
+    rerender(<DeckEditor chapterId={"ch1" as never} language="en" />);
+    expect(screen.getByRole("button", { name: "Select slide 1" })).toHaveTextContent("R-S1");
+    expect(screen.queryByText(/changed on the server/)).not.toBeInTheDocument();
+  });
+
+  test("a server change while dirty keeps edits, warns and blocks save until discarded", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<DeckEditor chapterId={"ch1" as never} language="en" />);
+    await user.type(screen.getByLabelText("Title"), "!");
+    data.getDeck = { _id: "d1", slides: slides.map((s) => ({ ...s, title: `R-${s.title}` })) };
+    rerender(<DeckEditor chapterId={"ch1" as never} language="en" />);
+    expect(screen.getByText(/changed on the server/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Title")).toHaveValue("S1!");
+    expect(screen.getByRole("button", { name: "Save deck" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Discard my changes and reload" }));
+    expect(screen.getByLabelText("Title")).toHaveValue("R-S1");
+    expect(screen.queryByText(/changed on the server/)).not.toBeInTheDocument();
+  });
+
+  test("saving does not raise a false conflict while the server catches up", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<DeckEditor chapterId={"ch1" as never} language="en" />);
+    await user.type(screen.getByLabelText("Title"), "!");
+    await user.click(screen.getByRole("button", { name: "Save deck" }));
+    expect(screen.queryByText(/changed on the server/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Title")).toHaveValue("S1!");
+    data.getDeck = { _id: "d1", slides: [{ ...slides[0], title: "S1!" }, ...slides.slice(1)] };
+    rerender(<DeckEditor chapterId={"ch1" as never} language="en" />);
+    expect(screen.queryByText(/changed on the server/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Title")).toHaveValue("S1!");
+  });
 });

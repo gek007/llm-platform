@@ -3,6 +3,7 @@ import type { Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import { requireAdmin } from "./lib/auth";
 import { deepEqual, invalid, requireText, TEXT_LIMIT, validateSlide, validateTestQuestion } from "./lib/contentValidation";
+import { HAND_EDIT } from "./lib/handEditLimits";
 import { languageValidator, questionValidator, slideValidator } from "./lib/engineTypes";
 import { courseStatusValidator, levelValidator, tierValidator } from "./schema";
 
@@ -279,7 +280,6 @@ export const reorderLessons = mutation({
 // (unlike the engine saves); text is still checked for emptiness and length.
 // ---------------------------------------------------------------------------------------------
 
-const HAND_EDIT = { minSlides: 6, maxSlides: 20, maxQuestions: 50, maxAttemptsCap: 20 } as const;
 
 export const listChapters = query({
   args: { courseId: v.id("courses") },

@@ -144,8 +144,8 @@ function ChapterCard({
           <RegenerateDialog jobId={jobId} target={{ kind: "test", chapterOrder: n }} label={`Regenerate test of chapter ${n}`} disabled={busy} />
         ) : null}
       </div>
-      {open === "deck" ? <DeckEditor chapterId={chapter._id} language={language} /> : null}
-      {open === "test" ? <TestEditor chapterId={chapter._id} language={language} /> : null}
+      {open === "deck" ? <DeckEditor chapterId={chapter._id} language={language} paused={busy} /> : null}
+      {open === "test" ? <TestEditor chapterId={chapter._id} language={language} paused={busy} /> : null}
     </li>
   );
 }

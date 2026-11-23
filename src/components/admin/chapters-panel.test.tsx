@@ -65,4 +65,14 @@ describe("ChaptersPanel", () => {
     expect(screen.getByText(/Regenerating…/)).toBeInTheDocument();
     expect(screen.getByText(/Writing chapter 1/)).toBeInTheDocument();
   });
+
+  test("an open deck editor is paused while the job is writing", async () => {
+    data.get = { _id: "job1", status: "writing" };
+    data.getDeck = { _id: "d1", slides: [] };
+    const user = userEvent.setup();
+    render(<ChaptersPanel courseId={"c1" as never} chapters={chapters} language="en" jobId="job1" />);
+    await user.click(screen.getByRole("button", { name: "Edit deck" }));
+    expect(screen.getByText("Regenerating — editing is paused")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save deck" })).toBeDisabled();
+  });
 });

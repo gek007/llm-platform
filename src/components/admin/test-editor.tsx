@@ -11,14 +11,18 @@ import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { errorMessage } from "./admin-utils";
 import { FormField, SelectField, StatusMessage, Textarea } from "./admin-fields";
-import { HAND_EDIT_LIMITS } from "./edit-limits";
+import { HAND_EDIT } from "../../../convex/lib/handEditLimits";
+import { SyncNotices } from "./sync-notices";
 import { useAdminQuery } from "./use-admin-query";
+import { useServerSync } from "./use-server-sync";
 
 const kinds: { value: Question["kind"]; label: string }[] = [
   { value: "single", label: "Single choice" },
   { value: "multiple", label: "Multiple choice" },
   { value: "true_false", label: "True / false" },
 ];
+
+type TestState = { questions: Question[]; pass: string; attempts: string };
 
 function move<T>(items: T[], from: number, to: number): T[] {
   const next = [...items];
@@ -31,18 +35,17 @@ function nextId(questions: Question[]): string {
   for (let n = questions.length + 1; ; n++) if (!taken.has(`q${n}`)) return `q${n}`;
 }
 
-export function TestEditor({ chapterId, language }: { chapterId: Id<"chapters">; language: string }) {
+export function TestEditor({ chapterId, language, paused }: { chapterId: Id<"chapters">; language: string; paused?: boolean }) {
   const test = useAdminQuery(api.admin.getTest, { chapterId });
   if (test === undefined) return <p className="text-muted">Loading test...</p>;
   if (test === null) return <p className="text-muted">This chapter has no test yet.</p>;
   return (
     <TestForm
-      key={`${test._id}-${test.version}`}
+      key={test._id}
       chapterId={chapterId}
       language={language}
-      initial={test.questions as Question[]}
-      passPercent={test.passPercent}
-      maxAttempts={test.maxAttempts}
+      paused={paused}
+      server={{ questions: test.questions as Question[], pass: String(test.passPercent), attempts: String(test.maxAttempts) }}
     />
   );
 }
@@ -50,20 +53,20 @@ export function TestEditor({ chapterId, language }: { chapterId: Id<"chapters">;
 function TestForm({
   chapterId,
   language,
-  initial,
-  passPercent: initialPass,
-  maxAttempts: initialAttempts,
+  server,
+  paused,
 }: {
   chapterId: Id<"chapters">;
   language: string;
-  initial: Question[];
-  passPercent: number;
-  maxAttempts: number;
+  server: TestState;
+  paused?: boolean;
 }) {
   const updateTest = useMutation(api.admin.updateTest);
-  const [questions, setQuestions] = useState<Question[]>(initial);
-  const [passPercent, setPassPercent] = useState(String(initialPass));
-  const [maxAttempts, setMaxAttempts] = useState(String(initialAttempts));
+  const sync = useServerSync<TestState>(server);
+  const { questions, pass: passPercent, attempts: maxAttempts } = sync.value;
+  const setQuestions = (next: Question[]) => sync.setValue({ ...sync.value, questions: next });
+  const setPassPercent = (pass: string) => sync.setValue({ ...sync.value, pass });
+  const setMaxAttempts = (attempts: string) => sync.setValue({ ...sync.value, attempts });
   const [feedback, setFeedback] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -99,11 +102,11 @@ function TestForm({
     const pass = Number(passPercent);
     const attempts = Number(maxAttempts);
     if (!Number.isInteger(pass) || pass < 1 || pass > 100) return "Pass mark must be a whole number from 1 to 100.";
-    if (!Number.isInteger(attempts) || attempts < 1 || attempts > HAND_EDIT_LIMITS.maxAttempts) {
-      return `Max attempts must be a whole number from 1 to ${HAND_EDIT_LIMITS.maxAttempts}.`;
+    if (!Number.isInteger(attempts) || attempts < 1 || attempts > HAND_EDIT.maxAttemptsCap) {
+      return `Max attempts must be a whole number from 1 to ${HAND_EDIT.maxAttemptsCap}.`;
     }
-    if (questions.length < 1 || questions.length > HAND_EDIT_LIMITS.maxQuestions) {
-      return `A test needs 1 to ${HAND_EDIT_LIMITS.maxQuestions} questions.`;
+    if (questions.length < 1 || questions.length > HAND_EDIT.maxQuestions) {
+      return `A test needs 1 to ${HAND_EDIT.maxQuestions} questions.`;
     }
     for (const [i, q] of questions.entries()) {
       if (!q.prompt.trim()) return `Question ${i + 1}: the prompt is required.`;
@@ -116,22 +119,20 @@ function TestForm({
   }
 
   async function save() {
+    if (paused || sync.conflict) return;
     const found = problem();
     if (found) return setFeedback({ kind: "error", text: found });
     setSaving(true);
     setFeedback(null);
     try {
-      await updateTest({
-        chapterId,
-        questions: questions.map((q) => ({
-          ...q,
-          prompt: q.prompt.trim(),
-          options: q.options.map((o) => o.trim()),
-          explanation: q.explanation.trim(),
-        })),
-        passPercent: Number(passPercent),
-        maxAttempts: Number(maxAttempts),
-      });
+      const cleaned = questions.map((q) => ({
+        ...q,
+        prompt: q.prompt.trim(),
+        options: q.options.map((o) => o.trim()),
+        explanation: q.explanation.trim(),
+      }));
+      await updateTest({ chapterId, questions: cleaned, passPercent: Number(passPercent), maxAttempts: Number(maxAttempts) });
+      sync.markSaved({ questions: cleaned, pass: String(Number(passPercent)), attempts: String(Number(maxAttempts)) });
       setFeedback({ kind: "success", text: "Test saved." });
     } catch (e) {
       setFeedback({ kind: "error", text: errorMessage(e) });
@@ -203,15 +204,16 @@ function TestForm({
         <Button
           type="button"
           variant="secondary"
-          disabled={questions.length >= HAND_EDIT_LIMITS.maxQuestions}
+          disabled={questions.length >= HAND_EDIT.maxQuestions}
           onClick={() => edit([...questions, { id: nextId(questions), kind: "single", prompt: "", options: ["", ""], correct: [0], explanation: "" }])}
         >
           Add question
         </Button>
       </div>
+      <SyncNotices paused={paused} conflict={sync.conflict} onDiscard={sync.discard} />
       {feedback ? <StatusMessage kind={feedback.kind}>{feedback.text}</StatusMessage> : null}
       <div>
-        <Button type="button" disabled={saving} onClick={() => void save()}>
+        <Button type="button" disabled={saving || paused || sync.conflict} onClick={() => void save()}>
           Save test
         </Button>
       </div>

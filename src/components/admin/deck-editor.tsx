@@ -4,14 +4,16 @@ import { useMutation } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { HAND_EDIT_LIMITS } from "./edit-limits";
+import { HAND_EDIT } from "../../../convex/lib/handEditLimits";
 import type { Slide as SlideData } from "../../../convex/lib/engineTypes";
 import { Slide } from "@/components/chapter/slide";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { errorMessage } from "./admin-utils";
 import { FormField, SelectField, StatusMessage, Textarea } from "./admin-fields";
+import { SyncNotices } from "./sync-notices";
 import { useAdminQuery } from "./use-admin-query";
+import { useServerSync } from "./use-server-sync";
 
 type Layout = SlideData["layout"];
 const layouts: { value: Layout; label: string }[] = [
@@ -52,7 +54,7 @@ function move<T>(items: T[], from: number, to: number): T[] {
   return next;
 }
 
-export function DeckEditor({ chapterId, language }: { chapterId: Id<"chapters">; language: string }) {
+export function DeckEditor({ chapterId, language, paused }: { chapterId: Id<"chapters">; language: string; paused?: boolean }) {
   const deck = useAdminQuery(api.admin.getDeck, { chapterId });
   if (deck === undefined) return <p className="text-muted">Loading deck...</p>;
   return (
@@ -60,21 +62,24 @@ export function DeckEditor({ chapterId, language }: { chapterId: Id<"chapters">;
       key={deck?._id ?? "none"}
       chapterId={chapterId}
       language={language}
-      initial={(deck?.slides as SlideData[] | undefined) ?? []}
+      paused={paused}
+      server={(deck?.slides as SlideData[] | undefined) ?? []}
     />
   );
 }
 
-function DeckForm({ chapterId, language, initial }: { chapterId: Id<"chapters">; language: string; initial: SlideData[] }) {
+function DeckForm({ chapterId, language, server, paused }: { chapterId: Id<"chapters">; language: string; server: SlideData[]; paused?: boolean }) {
   const updateDeck = useMutation(api.admin.updateDeck);
-  const [slides, setSlides] = useState<SlideData[]>(initial);
+  const sync = useServerSync<SlideData[]>(server);
+  const slides = sync.value;
+  const setSlides = sync.setValue;
   const [selected, setSelected] = useState(0);
   const [feedback, setFeedback] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
   const index = Math.min(selected, Math.max(slides.length - 1, 0));
   const current = slides[index] as SlideData | undefined;
-  const { minSlides, maxSlides } = HAND_EDIT_LIMITS;
+  const { minSlides, maxSlides } = HAND_EDIT;
 
   function edit(next: SlideData[], nextSelected = index) {
     setSlides(next);
@@ -85,6 +90,7 @@ function DeckForm({ chapterId, language, initial }: { chapterId: Id<"chapters">;
     edit(slides.map((s, i) => (i === index ? { ...s, ...changes } : s)));
 
   async function save() {
+    if (paused || sync.conflict) return;
     if (slides.length < minSlides || slides.length > maxSlides) {
       setFeedback({ kind: "error", text: `A deck needs ${minSlides} to ${maxSlides} slides; it has ${slides.length}.` });
       return;
@@ -92,7 +98,9 @@ function DeckForm({ chapterId, language, initial }: { chapterId: Id<"chapters">;
     setSaving(true);
     setFeedback(null);
     try {
-      await updateDeck({ chapterId, slides: slides.map(cleanSlide) });
+      const cleaned = slides.map(cleanSlide);
+      await updateDeck({ chapterId, slides: cleaned });
+      sync.markSaved(cleaned);
       setFeedback({ kind: "success", text: "Deck saved." });
     } catch (e) {
       setFeedback({ kind: "error", text: errorMessage(e) });
@@ -188,9 +196,10 @@ function DeckForm({ chapterId, language, initial }: { chapterId: Id<"chapters">;
           <p className="text-muted">This deck has no slides yet. Add one.</p>
         )}
       </div>
+      <SyncNotices paused={paused} conflict={sync.conflict} onDiscard={sync.discard} />
       {feedback ? <StatusMessage kind={feedback.kind}>{feedback.text}</StatusMessage> : null}
       <div>
-        <Button type="button" disabled={saving} onClick={() => void save()}>
+        <Button type="button" disabled={saving || paused || sync.conflict} onClick={() => void save()}>
           Save deck
         </Button>
       </div>
