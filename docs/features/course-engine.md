@@ -170,5 +170,9 @@ Results on 2026-11-23 (length `short`, level `beginner`):
 | יסודות הבטיחות בשימוש בבינה מלאכותית | he | 1.4 min | 5.0 min | 3 / 8 | 10 | 9–10 | 6 | 0 |
 | Основы кибергигиены для пожилых людей | ru | 1.5 min | 3.9 min | 3 / 9 | 10 | 10 | 10 | 1 (`Unknown reference: mailto:…`; the writer removed it and saved again) |
 
-Every run ended `ready`; the draft was hidden from the learner until published; tests served no answers; the learner passed every test and completed the course. Not covered: the browser UI with a signed-in Clerk admin, a deployed Convex backend, and token usage (not recorded yet).
+Every run ended `ready`; the draft was hidden from the learner until published; tests served no answers; the learner passed every test and completed the course.
+
+**Deployed backend + web app (2026-11-23).** With the branch pushed to the worktree's agent deployment (`npx convex dev --once`), the course-builder agent (`npm run dev:course-builder`) generated `יסודות הבטיחות בשימוש בבינה מלאכותית` (he, short) into that deployment: research ~80 s → outline approved → write ~280 s on the same eve session → `ready`. Admin steps ran with `npx convex run --identity '{"metadata":{"role":"admin"},…}'` and dispatch used `sendToAgent` as the route does. After publishing (`admin:updateCourse`), the production build (`npm run build && npm start`) served it signed out: the catalog lists `course-0d4576` (non-Latin title → hex slug), the course page shows 3 chapters, 9 lessons, slides and tests (10/9/10 questions), and the chapter page renders the Hebrew content in `dir="rtl" lang="he"` containers with slides and lessons locked behind sign-in, as designed.
+
+Not covered: clicking through `/admin/generate` and taking a test in the browser while signed in (needs a Clerk account), and token usage (not recorded yet).
 
