@@ -157,3 +157,18 @@ Throwaway spike (Task 16) on branch `spike/course-builder` (never merged), agent
 - **Bundling app code:** a workflow tool imported `commandMessage` / `parseCommand` from `../../../../src/lib/course-builder/commands` and called them in a step; it bundled and ran (`importProbe: true`). Importing `../../convex` was not tried.
 - **Local world warning:** the local Workflow world logs that `POST /.well-known/workflow/v1/flow` is unauthenticated; fine for local dev, never expose `eve dev` beyond loopback.
 - **Child models:** the parent stream shows only parent `model.started`; child events (including `anthropic/claude-haiku-5.5`) are on the child's own stream (`child.opened.sessionId`).
+
+## Live pipeline verification
+
+`npm run verify:live-pipeline` (convex/live-pipeline.test.ts, skipped unless `LIVE_PIPELINE=1`) runs the real `course-builder` agent (`eve dev`, Claude Opus 5.5, real web research) against a local HTTP server that forwards `/engine/*` into convex-test, so every write goes through the real Convex functions, validation, source scan and state machine. Admin steps run as a convex-test admin identity, dispatch mirrors the API route, and the finished course is published and completed by a learner. No Clerk users or Convex deployment are involved. Env: `LIVE_TOPIC`, `LIVE_LANGUAGE`, `LIVE_RESOURCE_URL` (`""` for none), `LIVE_PORT`, `LIVE_PIPELINE_OUT` (summary JSON). The child agent process gets the environment without `NODE_ENV=test`/`VITEST*`: eve mocks every model when `NODE_ENV=test`.
+
+Results on 2026-11-23 (length `short`, level `beginner`):
+
+| Topic | Language | Research | Total | Chapters / lessons | Slides per deck | Questions per test | Sources | Engine refusals |
+|---|---|---|---|---|---|---|---|---|
+| Basics of personal budgeting (+ one admin URL, which returned 404 and was skipped) | en | 0.9 min | 3.2 min | 3 / 9 | 9–10 | 10 | 11 | 0 |
+| יסודות הבטיחות בשימוש בבינה מלאכותית | he | 1.4 min | 5.0 min | 3 / 8 | 10 | 9–10 | 6 | 0 |
+| Основы кибергигиены для пожилых людей | ru | 1.5 min | 3.9 min | 3 / 9 | 10 | 10 | 10 | 1 (`Unknown reference: mailto:…`; the writer removed it and saved again) |
+
+Every run ended `ready`; the draft was hidden from the learner until published; tests served no answers; the learner passed every test and completed the course. Not covered: the browser UI with a signed-in Clerk admin, a deployed Convex backend, and token usage (not recorded yet).
+
