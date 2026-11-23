@@ -1,18 +1,15 @@
 import { ConvexError, v } from "convex/values";
-import type { Doc, Id } from "./_generated/dataModel";
-import { mutation, query, type MutationCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+import { mutation, query } from "./_generated/server";
 import { requireAdmin } from "./lib/auth";
 import {
-  MAX_CHAPTERS,
-  MAX_SUBCHAPTERS,
   PDF_MAX_BYTES,
   languageValidator,
   lengthValidator,
   outlineValidator,
   resourceKindValidator,
-  type JobStatus,
-  type Outline,
 } from "./lib/engineTypes";
+import { logEvent, transition, validateOutline, type JobCtx } from "./lib/jobs";
 import { chapterSlug, courseSlugFor, lessonSlug } from "./lib/slugs";
 import { isSafeHttpUrl, youtubeIdFromUrl } from "../src/components/markdown/embeds";
 import { levelValidator } from "./schema";
@@ -28,42 +25,10 @@ import { levelValidator } from "./schema";
 export const REGENERATE_PUBLISHED_MESSAGE = "Unpublish the course to regenerate";
 const EVENTS_LIMIT = 200;
 
-type JobCtx = Pick<MutationCtx, "db">;
-
 async function getJob(ctx: JobCtx, jobId: Id<"generationJobs">) {
   const job = await ctx.db.get(jobId);
   if (!job) throw new ConvexError("NOT_FOUND");
   return job;
-}
-
-async function logEvent(
-  ctx: JobCtx,
-  jobId: Id<"generationJobs">,
-  kind: "info" | "error",
-  message: string,
-) {
-  await ctx.db.insert("generationEvents", { jobId, at: Date.now(), kind, message });
-}
-
-/** Guarded status change: throws BAD_STATE unless the job is in one of `from`; stamps updatedAt and logs an event. */
-export async function transition(
-  ctx: JobCtx,
-  job: Doc<"generationJobs">,
-  from: JobStatus[],
-  to: JobStatus,
-) {
-  if (!from.includes(job.status)) throw new ConvexError("BAD_STATE");
-  await ctx.db.patch(job._id, { status: to, updatedAt: Date.now() });
-  await logEvent(ctx, job._id, "info", `Status: ${job.status} -> ${to}`);
-}
-
-function validateOutline(outline: Outline) {
-  if (outline.chapters.length < 1 || outline.chapters.length > MAX_CHAPTERS)
-    throw new ConvexError("INVALID_OUTLINE");
-  for (const ch of outline.chapters) {
-    if (ch.subchapters.length < 1 || ch.subchapters.length > MAX_SUBCHAPTERS)
-      throw new ConvexError("INVALID_OUTLINE");
-  }
 }
 
 export const createJob = mutation({
