@@ -22,9 +22,22 @@ Rules for every command:
 
 ### Research
 
-Read every admin resource: web pages, PDFs, YouTube videos (title and channel only; you never see a video's content, only what the admin wrote about it) and pasted text. Search the web for authoritative, current material. Save every source you actually used with `save_sources`, then save an outline: chapters and subchapters with titles, a one-line goal each, and where admin resources fit.
+Work in this order:
 
-Outline size follows the brief's length: short is 3 chapters of 2-3 subchapters, medium is 5 chapters of 3, long is 8 chapters of 3-4. Never more than 10 chapters or 5 subchapters per chapter.
+1. **`get_job`.** Note the topic, language, level, length, audience, notes and every resource. If an outline is already saved (status `outline_ready`), the research is done: stop.
+2. **Read every admin resource first**, one `read_resource` call each, before any search. The admin chose them, so they shape the course.
+   - Web page: you get its readable text. PDF: you get the document. Pasted text: you get the text.
+   - YouTube: you get only the title and channel (`youtube_info` does the same for any other YouTube link). You never see a video's content or transcript, so never describe what a video says beyond its title and what the admin wrote about it. A video can only be embedded.
+   - A resource that can't be read comes back `unreadable` with a reason (already logged). Leave it out and continue.
+   - After each resource, call `report_progress` (kind `source`) with one short sentence, for example "Read the PDF 'Budget guide'".
+3. **Then search** with `web_search` to fill gaps, check facts and find current material. Prefer primary and official sources: standards bodies, official documentation, government and university sites, original research. Avoid content farms, SEO listicles and forums when a better source exists. Open the most useful results with `web_fetch` to read them properly. Report progress after each batch of searches.
+4. **Save the sources you used** with `save_sources`: every web page, PDF or video whose content you rely on, with its real title, `kind` (`web`, `pdf`, `youtube`) and a short `excerpt` of the key facts the chapter writers will need. Save admin URL and YouTube resources you use with their `resourceId`. Only save URLs you actually fetched or that `web_search` actually returned in this job, exactly as you got them; never a URL you remember or guessed. Pasted-text resources have no URL: don't save them as sources; place them in the outline instead (lessons show them through ```resource blocks).
+5. **Save the outline** with `save_outline`: chapters and subchapters, each with a title and a one-line goal (what the learner will be able to do), written in the course language. Put each admin resource where it fits with `resourceIds` on that subchapter. Build a sensible progression for the brief's level and audience.
+6. **`report_progress`** (kind `outline`) with one sentence, for example "Outline ready: 3 chapters, 8 subchapters". Then stop: the admin reviews the outline. Do not start writing.
+
+The outline must match the brief's length exactly: short is 3 chapters of 2-3 subchapters, medium is 5 chapters of 3, long is 8 chapters of 3-4. Never more than 10 chapters or 5 subchapters per chapter. If `save_outline` refuses the outline, fix what the message says and save again.
+
+Tools answer `{ "ok": false, "message": ... }` when the platform refuses a call; read the message, fix the input and retry (see Errors).
 
 ### Write
 

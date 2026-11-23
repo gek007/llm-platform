@@ -61,6 +61,18 @@ In `live` mode `dispatch` calls `sendToAgent` (`src/lib/course-builder/eve-clien
 
 The agent (`agents/course-builder/`) reads and writes only through `/engine/*` with `createEngineClient` / `engineFromEnv` (`CONVEX_SITE_URL`, else `NEXT_PUBLIC_CONVEX_SITE_URL`, else `NEXT_PUBLIC_CONVEX_URL` with `.convex.cloud` -> `.convex.site`; `COURSE_ENGINE_SECRET`); a failed op throws `EngineError` with the server's whole `"CODE: detail"` string. `getJob` returns `JobBrief` (`convex/lib/engineTypes.ts`).
 
+### Research tools (course-builder agent)
+
+The research phase runs on these tools in `agents/course-builder/agent/tools/`; each takes the command's `jobId` and answers `{ ok: false, message }` (the engine's `"CODE: detail"`) instead of throwing when the engine refuses a call:
+
+- `get_job`: the `JobBrief`.
+- `read_resource { jobId, resourceId }`: URL → readable text (HTML stripped, `<main>`/`<article>` preferred, truncated to 60 000 characters); PDF → the Convex storage file as base64, given to the model as a `toolOutputPart.file(..., { mediaType: "application/pdf" })` part; pasted text → as is; all three are marked `read`. YouTube → `embed_only` with the oEmbed title and channel (the platform's "YouTube video" placeholder title is replaced with the real one); never a transcript. A failed fetch, a PDF over 20 MB (`PDF_MAX_BYTES`) or a non-PDF file marks the resource `unreadable` and logs the reason as a `source` progress event.
+- `youtube_info { url }` → `{ videoId, title, channel }` (`lib/youtube.ts`; the oEmbed URL is built from the parsed video ID).
+- `web_search` (eve built-in; the direct Anthropic model gets Anthropic's native search) and `web_fetch` (eve built-in: https only, every hop of up to 10 redirects SSRF-checked including at connect time, 5 MB cap), re-enabled because the agent sets `defaultTools: false`.
+- `save_sources`, `save_outline` (checks the job's length preset before calling the engine: short = exactly 3 chapters of 2-3 subchapters, medium = 5 of 3, long = 8 of 3-4; caps 10/5), `report_progress` (`lib/report-progress.ts` `makeReportProgressTool`, shared with the chapter-writer).
+
+**Fetch safety** (`lib/safe-fetch.ts`, used for pages, PDFs and oEmbed): https only on every hop; at most 3 redirects, each re-validated; destinations go through `guarded-fetch` (direct dependency, pinned): IP literals in any spelling (decimal, octal, hex, IPv4-mapped, NAT64, 6to4, Teredo) and resolved hostnames are refused when private, loopback, link-local (cloud metadata), CGNAT, ULA or reserved, `localhost`/`*.localhost`/`*.local` by name, and the address is re-checked inside the socket's DNS lookup (DNS rebinding); streamed byte caps (PDF 20 MB, text 5 MB, JSON 256 KB) abort past the cap; Content-Type must match and a PDF must start with `%PDF-`; the turn's abort signal and a per-kind timeout (PDF 90 s, page 30 s, oEmbed 15 s) bound the whole fetch, body included. Convex storage `fileUrl`s take the same path (public https, so they pass; caps still apply).
+
 ### Watchdog
 
 `convex/crons.ts` runs `engine.failStalledJobs` every 5 minutes; a `researching` or `writing` job with no update for 15 minutes becomes `failed` ("stalled"). A late write from the agent on such a job is accepted, the job returns to `writing` and an event is logged.

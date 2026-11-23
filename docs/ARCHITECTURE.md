@@ -17,7 +17,7 @@ Living document. Update it whenever a step changes the stack, structure, or tool
 | 8 | LMS features ([design](superpowers/specs/2026-11-21-lms-features-design.md)): Clerk + Convex in the app, schema and seed, landing and custom pricing (Clerk Billing), course catalog, lesson player (Mux, markdown, quizzes, progress), dashboard, admin panel with Mux uploads, Pro-only AI tutor widget with Clerk-verified auth | Done | `3d802b1` |
 | 9 | Full-page LMS knowledge-graph backdrop on `/`, clickable Mux preview video in `HeroDemo`, custom signed Mux videos for TypeScript Foundations lessons 1–2, Vercel Production deployment | Done | `e507a09` |
 | 10 | Hands-on labs POC on E2B ([design](superpowers/specs/2026-11-23-labs-poc-design.md)): lab image with terminal (ttyd) and VS Code (code-server), `LabProvider` (E2B, Docker, fake), lab sessions and exercise checks in Convex, lab page | Planned | — |
-| 11 | Course engine demo ([design](superpowers/specs/2026-11-23-course-engine-design.md)): `course-builder` eve agent generates a course from a topic and resources (URL, PDF, YouTube embed, text) in English, Hebrew or Russian; chapters/subchapters, slide decks, practice quizzes, recorded chapter tests, sources; outline approval, live progress, admin review and results | In progress (learner side and admin generation UI done: chapters, decks, tests, completion, wizard, live view, outline editor, engine API, fake engine; `course-builder` agent scaffold with `jwtHmac` channel, typed engine client and live dispatch; its tools are pending) | — |
+| 11 | Course engine demo ([design](superpowers/specs/2026-11-23-course-engine-design.md)): `course-builder` eve agent generates a course from a topic and resources (URL, PDF, YouTube embed, text) in English, Hebrew or Russian; chapters/subchapters, slide decks, practice quizzes, recorded chapter tests, sources; outline approval, live progress, admin review and results | In progress (learner side and admin generation UI done: chapters, decks, tests, completion, wizard, live view, outline editor, engine API, fake engine; `course-builder` agent scaffold with `jwtHmac` channel, typed engine client and live dispatch; research tools with SSRF-safe fetch; writing tools are pending) | — |
 
 Production (<https://llm-platform-xi.vercel.app>) runs the full Learnly LMS app (backed by the Clerk dev instance and Convex dev deployment `hallowed-iguana-534` until a custom domain and Convex prod deploy key are configured). Each area has a reference page in `docs/features/`:
 
@@ -238,6 +238,10 @@ agents/                       eve agent workspace (each subfolder is a named age
       channels/eve.ts         `jwtHmac` service auth only (`COURSE_BUILDER_CHANNEL_SECRET`, `sub: course-builder-route`); 401 for everything without the secret
       lib/engine-client.ts    Typed `/engine/*` client (`createEngineClient`, `engineFromEnv`, `EngineError`), built on `src/lib/course-builder/engine-http.ts`
       lib/command.ts          Re-exports `parseCommand` from `src/lib/course-builder/commands.ts`
+      lib/safe-fetch.ts       SSRF-safe fetch (`guarded-fetch`: https only, private/metadata IPs refused at connect time, 3 redirects, byte caps, Content-Type and `%PDF` checks)
+      lib/report-progress.ts  `makeReportProgressTool`, shared by the root agent and the chapter-writer
+      lib/                    Also `tool-result.ts` (EngineError → `{ ok: false, message }`), `outline.ts` (length-preset check), `youtube.ts` (oEmbed), `html-text.ts`
+      tools/                  Research: `get_job`, `read_resource`, `youtube_info`, `web_search`/`web_fetch` (eve built-ins), `save_sources`, `save_outline`, `report_progress` + tests
     evals/                    `evals.config.ts` (evals come later)
 convex/                       Convex backend functions; convex/_generated/ is written by `npx convex dev`
   auth.config.ts              Trusts Clerk session tokens (see Clerk ↔ Convex auth)

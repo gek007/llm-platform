@@ -27,6 +27,15 @@ describe("course-builder agent configuration", () => {
       "```resource",
       "6-12",
       "8-10",
+      // research phase (Task 18)
+      "read_resource",
+      "youtube_info",
+      "web_search",
+      "web_fetch",
+      "save_outline",
+      "report_progress",
+      "primary and official sources",
+      "course language",
     ]) {
       expect(text).toContain(needle);
     }
