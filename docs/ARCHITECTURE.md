@@ -17,7 +17,7 @@ Living document. Update it whenever a step changes the stack, structure, or tool
 | 8 | LMS features ([design](superpowers/specs/2026-11-21-lms-features-design.md)): Clerk + Convex in the app, schema and seed, landing and custom pricing (Clerk Billing), course catalog, lesson player (Mux, markdown, quizzes, progress), dashboard, admin panel with Mux uploads, Pro-only AI tutor widget with Clerk-verified auth | Done | `3d802b1` |
 | 9 | Full-page LMS knowledge-graph backdrop on `/`, clickable Mux preview video in `HeroDemo`, custom signed Mux videos for TypeScript Foundations lessons 1–2, Vercel Production deployment | Done | `e507a09` |
 | 10 | Hands-on labs POC on E2B ([design](superpowers/specs/2026-11-23-labs-poc-design.md)): lab image with terminal (ttyd) and VS Code (code-server), `LabProvider` (E2B, Docker, fake), lab sessions and exercise checks in Convex, lab page | Planned | — |
-| 11 | Course engine demo ([design](superpowers/specs/2026-11-23-course-engine-design.md)): `course-builder` eve agent generates a course from a topic and resources (URL, PDF, YouTube embed, text) in English, Hebrew or Russian; chapters/subchapters, slide decks, practice quizzes, recorded chapter tests, sources; outline approval, live progress, admin review and results | In progress (learner side and admin generation UI done: chapters, decks, tests, completion, wizard, live view, outline editor, engine API, fake engine; `course-builder` agent scaffold with `jwtHmac` channel, typed engine client and live dispatch; research tools with SSRF-safe fetch; chapter-writer subagent; the write fan-out is pending) | — |
+| 11 | Course engine demo ([design](superpowers/specs/2026-11-23-course-engine-design.md)): `course-builder` eve agent generates a course from a topic and resources (URL, PDF, YouTube embed, text) in English, Hebrew or Russian; chapters/subchapters, slide decks, practice quizzes, recorded chapter tests, sources; outline approval, live progress, admin review and results | In progress (learner side and admin generation UI done: chapters, decks, tests, completion, wizard, live view, outline editor, engine API, fake engine; `course-builder` agent scaffold with `jwtHmac` channel, typed engine client and live dispatch; research tools with SSRF-safe fetch; chapter-writer subagent; parallel write fan-out (`write_course`), `finish_job`, `regenerate`, tiny-course eval against a fake engine; admin review and results UI pending) | — |
 
 Production (<https://llm-platform-xi.vercel.app>) runs the full Learnly LMS app (backed by the Clerk dev instance and Convex dev deployment `hallowed-iguana-534` until a custom domain and Convex prod deploy key are configured). Each area has a reference page in `docs/features/`:
 
@@ -235,16 +235,18 @@ agents/                       eve agent workspace (each subfolder is a named age
   course-builder/             Course engine agent (`claude-opus-5-5`, `reasoning: "high"`, `defaultTools: false`)
     agent/
       agent.ts instructions.md   Model config; role, commands, phases, language, source integrity, quality bar
-      channels/eve.ts         `jwtHmac` service auth only (`COURSE_BUILDER_CHANNEL_SECRET`, `sub: course-builder-route`); 401 for everything without the secret
+      channels/eve.ts         `jwtHmac` service auth only (`COURSE_BUILDER_CHANNEL_SECRET`, `sub: course-builder-route`); 401 for everything without the secret. Walk built by `lib/channel-auth.ts`, which adds `localDev()` only for the local server `eve eval` starts (`EVE_EVALUATION=1`)
       lib/engine-client.ts    Typed `/engine/*` client (`createEngineClient`, `engineFromEnv`, `EngineError`), built on `src/lib/course-builder/engine-http.ts`
       lib/command.ts          Re-exports `parseCommand` from `src/lib/course-builder/commands.ts`
       lib/safe-fetch.ts       SSRF-safe fetch (`guarded-fetch`: https only, private/metadata IPs refused at connect time, 3 redirects, byte caps, Content-Type and `%PDF` checks)
       lib/report-progress.ts  `makeReportProgressTool`, shared by the root agent and the chapter-writer
       lib/                    Also `tool-result.ts` (EngineError → `{ ok: false, message }`), `outline.ts` (length-preset check), `youtube.ts` (oEmbed), `html-text.ts`
-      tools/                  Research: `get_job`, `read_resource`, `youtube_info`, `web_search`/`web_fetch` (eve built-ins), `save_sources`, `save_outline`, `report_progress` + tests
+      tools/                  Research: `get_job`, `read_resource`, `youtube_info`, `web_search`/`web_fetch` (eve built-ins), `save_sources`, `save_outline`, `report_progress`; write: `write_course` and `regenerate` (workflow tools), `finish_job` + tests
+      lib/write-chapters.ts   The write fan-out shared by `write_course` and `regenerate`: `"use step"` engine calls (`loadJob`, `logProgress`), `runWriter` (one `ctx.agent("chapter-writer").send(...)`), `writeChapters` (`Promise.all`, one `chapter` event per writer, `{ chapters, failed }`), `missingFromRefusal`
+      lib/regenerate.ts       The "Only redo <target>: <instruction>" / "Regenerate the chapter" sections appended to a writer brief
       lib/writer-brief.ts     `buildWriterBrief(job, chapterOrder)` (the chapter-writer's message) and `writerOutputSchema` (its report)
       subagents/chapter-writer/  Writes one chapter (same model and effort, `tool: false`): `save_subchapter`, `save_deck`, `save_test`, `report_progress` (the root tool re-exported) + tests
-    evals/                    `evals.config.ts` (evals come later)
+    evals/                    `tiny-course.eval.ts` (1-chapter write end to end, costs tokens); `evals.config.ts` setup serves `lib/fake-engine.ts` (in-memory `/engine/*` with the real validators) and points `CONVEX_SITE_URL` at it
 convex/                       Convex backend functions; convex/_generated/ is written by `npx convex dev`
   auth.config.ts              Trusts Clerk session tokens (see Clerk ↔ Convex auth)
   schema.ts                   Tables and indexes (see Data model)
@@ -342,11 +344,11 @@ Lesson markdown supports GFM, highlighted code blocks with a copy button, and qu
 | ------- | ------------ |
 | `npm run typecheck` | `next typegen` (route types such as `LayoutProps`) then `tsc --noEmit` |
 | `npm run lint` | ESLint |
-| `npm test` | Vitest once (`src/**/*.test.{ts,tsx}`, `convex/**/*.test.ts`, `agents/**/*.test.ts`; 463 tests in 70 files); `npm run test:watch` for watch mode |
-| `npm run test:e2e` | Playwright; builds Learnly, the course-builder agent and Next.js and starts a production server on `PORT` (default 3100); 23 tests, signed-out flows only. Outside CI it reuses a server already listening on that port, so stop any `next start` there first or you test a stale build |
+| `npm test` | Vitest once (`src/**/*.test.{ts,tsx}`, `convex/**/*.test.ts`, `agents/**/*.test.ts`; 587 tests in 80 files); `npm run test:watch` for watch mode |
+| `npm run test:e2e` | Playwright; builds Learnly, the course-builder agent and Next.js and starts a production server on `PORT` (default 3100); 24 tests, signed-out flows only. Outside CI it reuses a server already listening on that port, so stop any `next start` there first or you test a stale build |
 | `npm run info:learnly` | Inspects eve discovery, tools, and diagnostics for `agents/learnly/` |
 | `npm run eval:learnly` | Runs `agents/learnly/evals/` against a local Learnly server (needs live model credentials) |
-| `npm run info:course-builder`, `npm run eval:course-builder` | The same for `agents/course-builder/` |
+| `npm run info:course-builder`, `npm run eval:course-builder` | The same for `agents/course-builder/`; its eval writes a 1-chapter course against an in-memory fake engine (real Opus calls, see [course-engine.md](features/course-engine.md#write-phase-and-regenerate-course-builder-agent) for cost) |
 | `scripts/check-dev-tooling.sh [--online]` | Dev tooling and service configuration (see Repository layout) |
 
 Conventions:
