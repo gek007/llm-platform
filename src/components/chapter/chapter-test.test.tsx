@@ -167,6 +167,60 @@ describe("ChapterTest", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong. Please try again.");
   });
 
+  const v3 = {
+    ...base,
+    version: 3,
+    questions: [{ id: "n1", kind: "single", prompt: "New question", options: ["P", "Q"] }],
+  };
+
+  test("TEST_CHANGED rejection first, then the query delivers the new version: notice stays", async () => {
+    const user = userEvent.setup();
+    let reject!: (e: unknown) => void;
+    submit.mockReturnValue(new Promise((_, r) => (reject = r)));
+    const { rerender } = render(<ChapterTest testId={testId} />);
+    await answerAll(user);
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    await act(async () => reject(new ConvexError("TEST_CHANGED")));
+    expect(await screen.findByText("This test was updated")).toBeInTheDocument();
+    testData = v3;
+    rerender(<ChapterTest testId={testId} />);
+    expect(screen.getByText("This test was updated")).toBeInTheDocument();
+    expect(screen.getByText("New question")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "P" })).not.toBeChecked();
+    await user.click(screen.getByRole("radio", { name: "P" }));
+    expect(screen.queryByText("This test was updated")).not.toBeInTheDocument();
+  });
+
+  test("query delivers the new version first, then the in-flight submit rejects: notice shows", async () => {
+    const user = userEvent.setup();
+    let reject!: (e: unknown) => void;
+    submit.mockReturnValue(new Promise((_, r) => (reject = r)));
+    const { rerender } = render(<ChapterTest testId={testId} />);
+    await answerAll(user);
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    testData = v3;
+    rerender(<ChapterTest testId={testId} />);
+    expect(screen.queryByText("This test was updated")).not.toBeInTheDocument();
+    await act(async () => reject(new ConvexError("TEST_CHANGED")));
+    expect(await screen.findByText("This test was updated")).toBeInTheDocument();
+    expect(screen.getByText("New question")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "P" })).not.toBeChecked();
+  });
+
+  test.each([
+    ["LOCKED", "This test is locked for your account"],
+    ["UNAUTHENTICATED", "Sign in to take this test"],
+    ["INVALID_ANSWERS", "Some answers were invalid. Please review and submit again."],
+    ["NOT_FOUND", "This test is no longer available"],
+  ])("%s maps to a readable message", async (code, message) => {
+    const user = userEvent.setup();
+    submit.mockRejectedValue(new ConvexError(code));
+    render(<ChapterTest testId={testId} />);
+    await answerAll(user);
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+  });
+
   test("a reactive version change clears answers and disables Submit", async () => {
     const user = userEvent.setup();
     const { rerender } = render(<ChapterTest testId={testId} />);

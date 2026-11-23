@@ -44,6 +44,9 @@ function errorMessage(e: unknown): string {
 export function ChapterTest({ testId }: { testId: Id<"chapterTests"> }) {
   const data = useQuery(api.tests.getForViewer, { testId });
   const viewer = useQuery(api.viewer.get);
+  // Held here (not in the keyed player) so it survives the remount a new version causes.
+  // Cleared when the learner next answers or submits.
+  const [updated, setUpdated] = useState(false);
 
   if (data === undefined || viewer === undefined) {
     return <div aria-busy="true" aria-label="Loading test" className="h-48 animate-pulse rounded-xl border border-line bg-surface" />;
@@ -66,17 +69,37 @@ export function ChapterTest({ testId }: { testId: Id<"chapterTests"> }) {
   }
 
   // Keyed by version: a new version remounts the player, dropping stale answers and results.
-  return <TestPlayer key={data.version} testId={testId} data={data} />;
+  return (
+    <TestPlayer
+      key={data.version}
+      testId={testId}
+      data={data}
+      updated={updated}
+      onChanged={() => setUpdated(true)}
+      onDismiss={() => setUpdated(false)}
+    />
+  );
 }
 
 type TestData = NonNullable<FunctionReturnType<typeof api.tests.getForViewer>>;
 
-function TestPlayer({ testId, data }: { testId: Id<"chapterTests">; data: TestData }) {
+function TestPlayer({
+  testId,
+  data,
+  updated,
+  onChanged,
+  onDismiss,
+}: {
+  testId: Id<"chapterTests">;
+  data: TestData;
+  updated: boolean;
+  onChanged: () => void;
+  onDismiss: () => void;
+}) {
   const submitTest = useMutation(api.tests.submit);
   const [answers, setAnswers] = useState<Answers>({});
   const [result, setResult] = useState<SubmitResult | null>(null);
   const [pending, setPending] = useState(false);
-  const [changed, setChanged] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const rtl = RTL_LANGUAGES.includes(data.language as Language);
   const dirProps = rtl ? { dir: "rtl" as const, lang: data.language } : { lang: data.language };
@@ -84,6 +107,7 @@ function TestPlayer({ testId, data }: { testId: Id<"chapterTests">; data: TestDa
   const complete = data.questions.every((q) => (answers[q.id]?.length ?? 0) > 0);
 
   function setAnswer(id: string, values: number[]) {
+    onDismiss();
     setAnswers((prev) => ({ ...prev, [id]: values }));
   }
 
@@ -91,12 +115,12 @@ function TestPlayer({ testId, data }: { testId: Id<"chapterTests">; data: TestDa
     if (pending || !complete) return;
     setPending(true);
     setError(null);
-    setChanged(false);
+    onDismiss();
     try {
       setResult(await submitTest({ testId, version: data.version, answers }));
     } catch (e) {
       if (e instanceof ConvexError && e.data === "TEST_CHANGED") {
-        setChanged(true);
+        onChanged();
         setAnswers({});
       } else {
         setError(errorMessage(e));
@@ -177,7 +201,7 @@ function TestPlayer({ testId, data }: { testId: Id<"chapterTests">; data: TestDa
         void onSubmit();
       }}
     >
-      {changed ? (
+      {updated ? (
         <p role="status" className="rounded-lg border border-line-strong bg-surface-2 p-3 text-sm">
           This test was updated
         </p>
