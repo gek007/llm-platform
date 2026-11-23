@@ -60,10 +60,12 @@ export const forCourse = query({
 export const courseCompletion = query({
   args: { courseId: v.id("courses") },
   handler: async (ctx, { courseId }) => {
+    const zero = { lessonsDone: 0, lessonCount: 0, testsPassed: 0, testCount: 0, complete: false };
     const identity = await getIdentity(ctx);
-    if (!identity) {
-      return { lessonsDone: 0, lessonCount: 0, testsPassed: 0, testCount: 0, complete: false };
-    }
+    if (!identity) return zero;
+    const viewer = await getViewerState(ctx);
+    const course = await ctx.db.get(courseId);
+    if (!course || (course.status !== "published" && !viewer.admin)) return zero;
     const { lessonsDone, lessonCount, testsPassed, testCount, complete } =
       await completionFor(ctx, identity.subject, courseId);
     return { lessonsDone, lessonCount, testsPassed, testCount, complete };

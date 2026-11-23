@@ -11,11 +11,14 @@ const makeT = () => convexTest(schema, modules);
 type T = ReturnType<typeof makeT>;
 const asUser = (t: T) => t.withIdentity({ subject: "user_1", issuer, name: "u" });
 
-async function seed(t: T, opts: { tests: number; lessons?: number }) {
+async function seed(
+  t: T,
+  opts: { tests: number; lessons?: number; status?: "draft" | "published" },
+) {
   return await t.run(async (ctx) => {
     const courseId = await ctx.db.insert("courses", {
       slug: "c", title: "C", summary: "s", description: "d", level: "beginner",
-      tier: "free", status: "published", tags: [], outcomes: [], order: 1,
+      tier: "free", status: opts.status ?? "published", tags: [], outcomes: [], order: 1,
     });
     const lessonIds = [];
     for (let i = 0; i < (opts.lessons ?? 2); i++) {
@@ -109,5 +112,17 @@ describe("progress.courseCompletion", () => {
     const s = await seed(t, { tests: 0, lessons: 0 });
     const r = await asUser(t).query(api.progress.courseCompletion, { courseId: s.courseId });
     expect(r.complete).toBe(false);
+  });
+
+  it("hides draft course counts from learners but not admins", async () => {
+    const t = makeT();
+    const s = await seed(t, { tests: 1, status: "draft" });
+    expect(await asUser(t).query(api.progress.courseCompletion, { courseId: s.courseId })).toEqual({
+      lessonsDone: 0, lessonCount: 0, testsPassed: 0, testCount: 0, complete: false,
+    });
+    const admin = t.withIdentity({ subject: "admin_1", issuer, metadata: { role: "admin" } });
+    expect(await admin.query(api.progress.courseCompletion, { courseId: s.courseId })).toMatchObject({
+      lessonCount: 2, testCount: 1,
+    });
   });
 });
