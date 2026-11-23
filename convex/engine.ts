@@ -9,7 +9,9 @@ import {
   readStatusValidator,
   slideValidator,
   sourceKindValidator,
+  CHAPTER_BODY_CAP,
   TEST_DEFAULTS,
+  type ChapterContent,
   type JobBrief,
   type JobStatus,
   type Question,
@@ -41,6 +43,7 @@ import { youtubeIdFromUrl } from "../src/components/markdown/embeds";
  * - The job's course must still be a draft for content writes and for any failed → writing resume
  *   (BAD_STATE "Course is published; …"), so AI content never lands in a live course.
  * - failJob → any non-terminal status; on an already failed job it just records the new error.
+ * - getJob, getChapterContent → read-only, any status (getChapterContent needs the course).
  * Every write logs a `generationEvents` row (the watchdog's liveness signal); content writes do not
  * patch the job doc, so parallel chapter writers do not conflict on it.
  *
@@ -316,6 +319,40 @@ export const getJob = internalQuery({
       sources,
       outline: job.outline,
       course,
+    };
+  },
+});
+
+/**
+ * One chapter's saved content for a regenerate (read-only, any status once the course exists):
+ * lesson bodies capped at CHAPTER_BODY_CAP characters each, and as context only the deck's slide
+ * titles and the test's question prompts (never `correct` or `explanation`). Scoped to the job's own
+ * course (`chapterOf`): another job's chapters are unreachable.
+ */
+export const getChapterContent = internalQuery({
+  args: { jobId: v.string(), chapterOrder: v.number() },
+  handler: async (ctx, args): Promise<ChapterContent> => {
+    const job = await loadJob(ctx, args.jobId);
+    const chapter = await chapterOf(ctx, job, args.chapterOrder);
+    const deck = await ctx.db
+      .query("slideDecks")
+      .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
+      .first();
+    const test = await ctx.db
+      .query("chapterTests")
+      .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
+      .first();
+    return {
+      chapterOrder: chapter.order,
+      title: chapter.title,
+      lessons: (await chapterLessons(ctx, chapter._id)).map((l, i) => ({
+        order: i + 1,
+        title: l.title,
+        body: l.body.slice(0, CHAPTER_BODY_CAP),
+        truncated: l.body.length > CHAPTER_BODY_CAP,
+      })),
+      deckSlideTitles: deck?.slides.map((s) => s.title) ?? [],
+      testPrompts: test?.questions.map((q) => q.prompt) ?? [],
     };
   },
 });

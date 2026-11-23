@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { EventKind, JobBrief, Question, Slide } from "../../../../convex/lib/engineTypes";
+import { CHAPTER_BODY_CAP, type EventKind, type JobBrief, type Question, type Slide } from "../../../../convex/lib/engineTypes";
 import { validateQuestion } from "../../../../convex/lib/grading";
 import { findUnknownRefs, findUnknownRefsInText, type KnownRefs } from "../../../../convex/lib/sourceScan";
 
@@ -97,6 +97,21 @@ export function createFakeEngine(job: FakeJob) {
         },
       };
       return out;
+    },
+    getChapterContent: (a) => {
+      const chapter = chapterOf(a.chapterOrder);
+      return {
+        chapterOrder: chapter.order,
+        title: chapter.title,
+        lessons: chapter.lessons.map((l) => ({
+          order: l.order,
+          title: l.title,
+          body: l.body.slice(0, CHAPTER_BODY_CAP),
+          truncated: l.body.length > CHAPTER_BODY_CAP,
+        })),
+        deckSlideTitles: chapter.deck?.map((s) => s.title) ?? [],
+        testPrompts: chapter.test?.questions.map((q) => q.prompt) ?? [],
+      };
     },
     reportProgress: (a) => {
       if (job.status !== "writing" && job.status !== "researching") fail("BAD_STATE", `reportProgress is not allowed while the job is ${job.status}`);

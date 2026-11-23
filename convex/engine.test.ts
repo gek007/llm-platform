@@ -186,6 +186,62 @@ describe("getJob", () => {
   });
 });
 
+describe("getChapterContent", () => {
+  it("needs the secret like every op", async () => {
+    const t = makeT();
+    const { jobId } = await writingJob(t);
+    expect((await post(t, "getChapterContent", { jobId, chapterOrder: 1 }, null)).status).toBe(401);
+    expect((await post(t, "getChapterContent", { jobId, chapterOrder: 1 }, "Bearer wrong")).status).toBe(401);
+  });
+  it("returns the chapter's saved lesson bodies, deck slide titles and test prompts (no answers)", async () => {
+    const t = makeT();
+    const { jobId } = await writingJob(t);
+    await post(t, "saveSubchapter", sub11(jobId, { chapterOrder: 2, subchapterOrder: 1, body: "Body of 2.1" }));
+    await post(t, "saveDeck", { jobId, chapterOrder: 2, slides: slides(6) });
+    await post(t, "saveTest", { jobId, chapterOrder: 2, questions: questions(8, "Ask") });
+    const { status, json } = await post(t, "getChapterContent", { jobId, chapterOrder: 2 });
+    expect(status).toBe(200);
+    expect(json).toEqual({
+      ok: true,
+      chapterOrder: 2,
+      title: "Ch 2",
+      lessons: [
+        { order: 1, title: "What is RAG", body: "Body of 2.1", truncated: false },
+        { order: 2, title: "S2.2", body: "", truncated: false },
+      ],
+      deckSlideTitles: ["Slide 1", "Slide 2", "Slide 3", "Slide 4", "Slide 5", "Slide 6"],
+      testPrompts: Array.from({ length: 8 }, (_, i) => `Ask ${i + 1}?`),
+    });
+    expect(JSON.stringify(json)).not.toMatch(/correct|explanation|Because A/);
+    // Chapter 1 has nothing saved yet.
+    const empty = await post(t, "getChapterContent", { jobId, chapterOrder: 1 });
+    expect(empty.json).toMatchObject({ deckSlideTitles: [], testPrompts: [] });
+  });
+  it("caps each body at 12 000 characters and marks it truncated", async () => {
+    const t = makeT();
+    const { jobId } = await writingJob(t);
+    await post(t, "saveSubchapter", sub11(jobId, { body: "x".repeat(20_000) }));
+    const { json } = await post(t, "getChapterContent", { jobId, chapterOrder: 1 });
+    const lesson = (json.lessons as { body: string; truncated: boolean }[])[0];
+    expect(lesson.body).toHaveLength(12_000);
+    expect(lesson.truncated).toBe(true);
+  });
+  it("is scoped to the job's own course: unknown chapter, other job, no course", async () => {
+    const t = makeT();
+    const a = await writingJob(t);
+    const b = await writingJob(t);
+    await post(t, "saveSubchapter", sub11(b.jobId, { body: "Only in job B" }));
+    const fromA = await post(t, "getChapterContent", { jobId: a.jobId, chapterOrder: 1 });
+    expect(JSON.stringify(fromA.json)).not.toContain("Only in job B");
+    const missing = await post(t, "getChapterContent", { jobId: a.jobId, chapterOrder: 3 });
+    expect(missing).toMatchObject({ status: 400, json: { ok: false, error: "NOT_FOUND: chapter 3" } });
+    const early = await researchingJob(t);
+    const none = await post(t, "getChapterContent", { jobId: early, chapterOrder: 1 });
+    expect(none.status).toBe(400);
+    expect(none.json.error).toMatch(/^BAD_STATE/);
+  });
+});
+
 describe("research phase", () => {
   it("saveSources upserts by normalized url and returns ids", async () => {
     const t = makeT();

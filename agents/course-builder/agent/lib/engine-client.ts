@@ -1,6 +1,6 @@
 import type { FunctionArgs } from "convex/server";
 import type { internal } from "../../../../convex/_generated/api";
-import type { JobBrief } from "../../../../convex/lib/engineTypes";
+import type { ChapterContent, JobBrief } from "../../../../convex/lib/engineTypes";
 import { convexSiteUrl, createEngineHttp, EngineError } from "../../../../src/lib/course-builder/engine-http";
 
 /**
@@ -12,13 +12,14 @@ import { convexSiteUrl, createEngineHttp, EngineError } from "../../../../src/li
  */
 
 export { EngineError };
-export type { JobBrief };
+export type { ChapterContent, JobBrief };
 
 type Ops = typeof internal.engine;
 type Args<K extends keyof Ops> = FunctionArgs<Ops[K]>;
 
 export type EngineClient = {
   getJob(args: Args<"getJob">): Promise<JobBrief>;
+  getChapterContent(args: Args<"getChapterContent">): Promise<ChapterContent>;
   setResourceStatus(args: Args<"setResourceStatus">): Promise<void>;
   saveSources(args: Args<"saveSources">): Promise<{ sources: { id: string; url: string }[] }>;
   saveOutline(args: Args<"saveOutline">): Promise<void>;
@@ -47,6 +48,7 @@ export function createEngineClient(options: {
   };
   return {
     getJob: (args) => call("getJob", args),
+    getChapterContent: (args) => call("getChapterContent", args),
     setResourceStatus: (args) => none("setResourceStatus", args),
     saveSources: (args) => call("saveSources", args),
     saveOutline: (args) => none("saveOutline", args),

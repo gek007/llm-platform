@@ -235,15 +235,15 @@ agents/                       eve agent workspace (each subfolder is a named age
   course-builder/             Course engine agent (`claude-opus-5-5`, `reasoning: "high"`, `defaultTools: false`)
     agent/
       agent.ts instructions.md   Model config; role, commands, phases, language, source integrity, quality bar
-      channels/eve.ts         `jwtHmac` service auth only (`COURSE_BUILDER_CHANNEL_SECRET`, `sub: course-builder-route`); 401 for everything without the secret. Walk built by `lib/channel-auth.ts`, which adds `localDev()` only for the local server `eve eval` starts (`EVE_EVALUATION=1`)
+      channels/eve.ts         `jwtHmac` service auth only (`COURSE_BUILDER_CHANNEL_SECRET`, `sub: course-builder-route`); 401 for everything without the secret. Walk built by `lib/channel-auth.ts`, which adds `localDev()` only for the local server `eve eval` starts (`EVE_EVALUATION=1` and `EVE_EVALUATION_RUN_ID` set; never set `EVE_EVALUATION` in `.env.local`)
       lib/engine-client.ts    Typed `/engine/*` client (`createEngineClient`, `engineFromEnv`, `EngineError`), built on `src/lib/course-builder/engine-http.ts`
       lib/command.ts          Re-exports `parseCommand` from `src/lib/course-builder/commands.ts`
       lib/safe-fetch.ts       SSRF-safe fetch (`guarded-fetch`: https only, private/metadata IPs refused at connect time, 3 redirects, byte caps, Content-Type and `%PDF` checks)
       lib/report-progress.ts  `makeReportProgressTool`, shared by the root agent and the chapter-writer
       lib/                    Also `tool-result.ts` (EngineError → `{ ok: false, message }`), `outline.ts` (length-preset check), `youtube.ts` (oEmbed), `html-text.ts`
-      tools/                  Research: `get_job`, `read_resource`, `youtube_info`, `web_search`/`web_fetch` (eve built-ins), `save_sources`, `save_outline`, `report_progress`; write: `write_course` and `regenerate` (workflow tools), `finish_job` + tests
-      lib/write-chapters.ts   The write fan-out shared by `write_course` and `regenerate`: `"use step"` engine calls (`loadJob`, `logProgress`), `runWriter` (one `ctx.agent("chapter-writer").send(...)`), `writeChapters` (`Promise.all`, one `chapter` event per writer, `{ chapters, failed }`), `missingFromRefusal`
-      lib/regenerate.ts       The "Only redo <target>: <instruction>" / "Regenerate the chapter" sections appended to a writer brief
+      tools/                  Research: `get_job`, `read_resource`, `youtube_info`, `web_search`/`web_fetch` (eve built-ins), `save_sources`, `save_outline`, `report_progress`; write: `write_course` and `regenerate` (workflow tools), `finish_job`, `fail_job` + tests
+      lib/write-chapters.ts   The write fan-out shared by `write_course` and `regenerate`: `"use step"` engine calls (`loadJob`, `loadChapterContent`, `logProgress`), `runWriter` (one `ctx.agent("chapter-writer").send(...)`), `writeChapters` (`Promise.all`, one `chapter` event per writer, `{ chapters, failed }`), `missingFromRefusal`
+      lib/regenerate.ts       The "Only redo <target>: <instruction>" / "Regenerate the chapter" sections and the chapter's saved content (`savedContentSection`) appended to a writer brief
       lib/writer-brief.ts     `buildWriterBrief(job, chapterOrder)` (the chapter-writer's message) and `writerOutputSchema` (its report)
       subagents/chapter-writer/  Writes one chapter (same model and effort, `tool: false`): `save_subchapter`, `save_deck`, `save_test`, `report_progress` (the root tool re-exported) + tests
     evals/                    `tiny-course.eval.ts` (1-chapter write end to end, costs tokens); `evals.config.ts` setup serves `lib/fake-engine.ts` (in-memory `/engine/*` with the real validators) and points `CONVEX_SITE_URL` at it
@@ -252,7 +252,7 @@ convex/                       Convex backend functions; convex/_generated/ is wr
   schema.ts                   Tables and indexes (see Data model)
   lib/                        auth.ts (identity, isAdmin, isPro), access.ts (canAccessLesson), seedData.ts
   courses.ts lessons.ts …     Public and student functions; admin.ts, mux.ts and playback.ts ("use node"), muxData.ts, playbackData.ts, http.ts for admin and video
-  generation.ts engine.ts     Course engine: admin job API (create, resources, outline, approve, sources), engine write ops behind `/engine/*`
+  generation.ts engine.ts     Course engine: admin job API (create, resources, outline, approve, sources), engine read (`getJob`, `getChapterContent`) and write ops behind `/engine/*`
   crons.ts                    Watchdog: fails stalled generation jobs every 5 minutes
   lib/jobs.ts sourceScan.ts engineAuth.ts   Job transitions/events/outline validation, source-integrity scan, bearer check for `/engine/*`
   *.test.ts                   convex-test unit tests (never deployed: two dots in the name)
@@ -344,7 +344,7 @@ Lesson markdown supports GFM, highlighted code blocks with a copy button, and qu
 | ------- | ------------ |
 | `npm run typecheck` | `next typegen` (route types such as `LayoutProps`) then `tsc --noEmit` |
 | `npm run lint` | ESLint |
-| `npm test` | Vitest once (`src/**/*.test.{ts,tsx}`, `convex/**/*.test.ts`, `agents/**/*.test.ts`; 587 tests in 80 files); `npm run test:watch` for watch mode |
+| `npm test` | Vitest once (`src/**/*.test.{ts,tsx}`, `convex/**/*.test.ts`, `agents/**/*.test.ts`; 599 tests in 80 files); `npm run test:watch` for watch mode |
 | `npm run test:e2e` | Playwright; builds Learnly, the course-builder agent and Next.js and starts a production server on `PORT` (default 3100); 24 tests, signed-out flows only. Outside CI it reuses a server already listening on that port, so stop any `next start` there first or you test a stale build |
 | `npm run info:learnly` | Inspects eve discovery, tools, and diagnostics for `agents/learnly/` |
 | `npm run eval:learnly` | Runs `agents/learnly/evals/` against a local Learnly server (needs live model credentials) |

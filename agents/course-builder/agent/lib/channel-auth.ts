@@ -8,9 +8,11 @@ import { CHANNEL_JWT } from "../../../../src/lib/course-builder/eve-client";
  * request needs a valid token. Without the secret the walk is empty, so every request gets 401
  * (never verify against an empty key).
  *
- * One exception: `eve eval` sets EVE_EVALUATION=1 for the local server it starts itself, and its
- * client sends no credentials. Only then is localDev() added, which eve still limits to a local
- * development server and loopback, non-cross-site requests (it rejects everything in production).
+ * One exception: `eve eval` sets EVE_EVALUATION=1 and a fresh EVE_EVALUATION_RUN_ID for the local
+ * server it starts itself, and its client sends no credentials. Only when both are set is
+ * localDev() added, which eve still limits to a local development server and loopback,
+ * non-cross-site requests (it rejects everything in production). Never set EVE_EVALUATION in
+ * .env.local.
  */
 export function channelAuth(env: Record<string, string | undefined> = process.env) {
   const secret = env.COURSE_BUILDER_CHANNEL_SECRET;
@@ -25,5 +27,6 @@ export function channelAuth(env: Record<string, string | undefined> = process.en
         }),
       ]
     : [];
-  return env.EVE_EVALUATION === "1" ? [...walk, localDev()] : walk;
+  const evalServer = env.EVE_EVALUATION === "1" && Boolean(env.EVE_EVALUATION_RUN_ID?.trim());
+  return evalServer ? [...walk, localDev()] : walk;
 }

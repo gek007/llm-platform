@@ -10,12 +10,16 @@ const engine = {
   getJob: vi.fn(),
   reportProgress: vi.fn<(args: unknown) => Promise<void>>(async () => {}),
   finishJob: vi.fn(async () => {}),
+  failJob: vi.fn<(args: unknown) => Promise<void>>(async () => {}),
+  getChapterContent: vi.fn(),
 };
 vi.mock("../lib/engine-client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/engine-client")>()),
   engineFromEnv: () => engine as unknown as EngineClient,
 }));
 
+import { missingFromRefusal } from "../lib/write-chapters";
+import failJob from "./fail_job";
 import finishJob from "./finish_job";
 import regenerate from "./regenerate";
 import writeCourse from "./write_course";
@@ -95,9 +99,22 @@ const chapterEvents = () =>
     .map(([args]) => args as { kind: string; chapterOrder?: number; message: string })
     .filter((e) => e.kind === "chapter");
 
+/** What getChapterContent returns for chapter 2 (saved bodies the regenerate brief must carry). */
+const content2 = {
+  chapterOrder: 2,
+  title: "Chapter 2 title",
+  lessons: [
+    { order: 1, title: "Lesson 2.1", body: "BODY-2.1 envelopes and percentages", truncated: false },
+    { order: 2, title: "Lesson 2.2", body: "BODY-2.2 review monthly", truncated: true },
+  ],
+  deckSlideTitles: ["Why budget", "Envelopes"],
+  testPrompts: ["What is a fixed cost?"],
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   engine.getJob.mockResolvedValue(job());
+  engine.getChapterContent.mockResolvedValue(content2);
 });
 
 describe("write_course", () => {
@@ -118,6 +135,8 @@ describe("write_course", () => {
       expect(send?.options).toEqual({ outputSchema: writerOutputSchema, signal: ctx.abortSignal });
     }
     expect(out).toEqual({ ok: true, chapters: [full(1), full(2), full(3)], failed: [] });
+    // The first write is unchanged: plain briefs, no saved content loaded.
+    expect(engine.getChapterContent).not.toHaveBeenCalled();
     // One chapter event per finished writer.
     expect(chapterEvents().map((e) => e.chapterOrder).sort()).toEqual([1, 2, 3]);
     expect(chapterEvents()[0]?.message).toMatch(/written: 2 subchapters, slide deck and test saved/);
@@ -235,6 +254,21 @@ describe("finish_job", () => {
     });
   });
 
+  test("the refusal parser reads chapter numbers only at segment starts, not inside lesson titles", () => {
+    expect(
+      missingFromRefusal(
+        'INCOMPLETE: Chapter 2: lesson "Chapter 9: costs; Chapter 7: savings" has no body; Chapter 4: deck missing',
+      ),
+    ).toEqual({
+      missing: ['Chapter 2: lesson "Chapter 9: costs; Chapter 7: savings" has no body', "Chapter 4: deck missing"],
+      chapterOrders: [2, 4],
+    });
+    expect(missingFromRefusal("INCOMPLETE: the course has no chapters")).toEqual({
+      missing: ["the course has no chapters"],
+      chapterOrders: [],
+    });
+  });
+
   test("BAD_STATE comes back as a message with no chapters", async () => {
     engine.finishJob.mockRejectedValueOnce(new EngineError("BAD_STATE: finishJob is not allowed while the job is outline_ready"));
     const out = await run({ jobId: "job1" });
@@ -284,8 +318,46 @@ describe("regenerate", () => {
     expect(sends[0]?.message.startsWith(buildWriterBrief(job(), 2))).toBe(true);
     expect(sends[0]?.message).toContain(line);
     expect(sends[0]?.message).toContain(tool);
+    // Grounded in what is saved: every lesson body of the chapter, plus the deck and test outline.
+    expect(engine.getChapterContent).toHaveBeenCalledWith({ jobId: "job1", chapterOrder: 2 });
+    expect(sends[0]?.message).toContain("BODY-2.1 envelopes and percentages");
+    expect(sends[0]?.message).toContain("BODY-2.2 review monthly");
+    expect(sends[0]?.message).toContain("[Truncated: the saved body is longer.]");
+    expect(sends[0]?.message).toContain("Why budget");
+    expect(sends[0]?.message).toContain("What is a fixed cost?");
     expect(out).toEqual({ ok: true, target, redone: true, saved, problems: [] });
     expect(chapterEvents().at(-1)?.message).toMatch(/^Regenerated /);
+  });
+
+  test("a subchapter regenerate marks the target and its neighbours (do not rewrite)", async () => {
+    const { ctx, sends, release } = stubAgents(() => ({ chapterOrder: 2, saved: { subchapters: 1, deck: false, test: false }, problems: [] }));
+    release();
+    await execute(regenerate, { jobId: "job1", target: { kind: "subchapter", chapterOrder: 2, subchapterOrder: 2 }, instruction: "x" }, ctx);
+    const message = sends[0]!.message;
+    expect(message).toContain('### Subchapter 2.1 "Lesson 2.1" (do not rewrite: context only)\n\nBODY-2.1');
+    expect(message).toContain('### Subchapter 2.2 "Lesson 2.2" (saved version of the item you rewrite)\n\nBODY-2.2');
+  });
+
+  test("a test regenerate is told to ask only what the saved lessons teach", async () => {
+    const { ctx, sends, release } = stubAgents(() => ({ chapterOrder: 2, saved: { subchapters: 0, deck: false, test: true }, problems: [] }));
+    release();
+    await execute(regenerate, { jobId: "job1", target: { kind: "test", chapterOrder: 2 }, instruction: "x" }, ctx);
+    expect(sends[0]!.message).toContain("Every question must be answerable from these saved lesson bodies");
+  });
+
+  test("a whole-chapter regenerate does not load the saved content (it rewrites everything)", async () => {
+    const { ctx, release } = stubAgents();
+    release();
+    await execute(regenerate, { jobId: "job1", target: { kind: "chapter", chapterOrder: 2 }, instruction: "x" }, ctx);
+    expect(engine.getChapterContent).not.toHaveBeenCalled();
+  });
+
+  test("an engine refusal of getChapterContent stops the regenerate before any writer", async () => {
+    engine.getChapterContent.mockRejectedValueOnce(new EngineError("NOT_FOUND: chapter 2"));
+    const { ctx, sends } = stubAgents();
+    const out = await execute(regenerate, { jobId: "job1", target: { kind: "deck", chapterOrder: 2 }, instruction: "x" }, ctx);
+    expect(out).toEqual({ ok: false, message: "NOT_FOUND: chapter 2" });
+    expect(sends).toHaveLength(0);
   });
 
   test("an empty instruction still tells the writer what to do", async () => {
@@ -332,5 +404,23 @@ describe("regenerate", () => {
       (await execute(regenerate, { jobId: "job1", target: { kind: "deck", chapterOrder: 1 }, instruction: "x" }, ctx)).message,
     ).toMatch(/^BAD_STATE: the job is ready/);
     expect(sends).toHaveLength(0);
+  });
+});
+
+describe("fail_job", () => {
+  const run = async (input: unknown) =>
+    (await failJob.execute(input as never, { abortSignal: new AbortController().signal } as never)) as Record<string, any>;
+
+  test("fails the job with the real cause", async () => {
+    expect(await run({ jobId: "job1", error: "Chapter 2 is still incomplete: deck missing" })).toEqual({ ok: true, status: "failed" });
+    expect(engine.failJob).toHaveBeenCalledWith({ jobId: "job1", error: "Chapter 2 is still incomplete: deck missing" });
+  });
+
+  test("an engine refusal comes back as ok: false", async () => {
+    engine.failJob.mockRejectedValueOnce(new EngineError("BAD_STATE: failJob is not allowed while the job is ready"));
+    expect(await run({ jobId: "job1", error: "x" })).toEqual({
+      ok: false,
+      message: "BAD_STATE: failJob is not allowed while the job is ready",
+    });
   });
 });

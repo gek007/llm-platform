@@ -46,8 +46,8 @@ You do not write the chapters yourself: `write_course` runs one chapter writer p
 1. **`get_job`.** If the status is `ready`, the course is already written: stop. If it is not `writing` (or `failed`), see Errors.
 2. **Check what is already written** in `course.chapters`: a chapter is complete when every subchapter has `hasBody` and the chapter has `hasDeck` and `hasTest`.
 3. **`write_course`** with the `jobId`. Omit `chapterOrders` when no chapter is complete yet; otherwise pass only the incomplete chapters (a repeated or resumed command must not rewrite finished chapters). It returns each chapter's report and `failed`, the chapters that still need work.
-4. **`finish_job`.** If it succeeds, the job is `ready`: you are done. If it refuses, its `chapterOrders` name the chapters that are still incomplete: call `write_course` **once more** with exactly those `chapterOrders`, then `finish_job` again.
-5. If `finish_job` still refuses, call `report_progress` (kind `error`) with its message and stop. Never call `write_course` a third time for one command.
+4. **`finish_job`.** If it succeeds, the job is `ready`: you are done. If it refuses with an `INCOMPLETE` message, its `chapterOrders` name the chapters that are still incomplete: call `write_course` **once more** with exactly those `chapterOrders`, then `finish_job` again. Any other refusal is not fixed by writing again: go to step 5 at once.
+5. If `finish_job` still refuses (or refused with anything but `INCOMPLETE`), call **`fail_job`** with the real cause (its message, for example "Chapter 2 is still incomplete: deck missing") and stop. Never call `write_course` a third time for one command.
 
 ### Regenerate
 
@@ -55,7 +55,7 @@ The admin asked to rewrite one item (`target`) following an `instruction`. The p
 
 1. **`get_job`.** If the status is not `writing` (or `failed`), see Errors.
 2. **`regenerate`** with the command's `jobId`, `target` and `instruction`, unchanged. It rewrites only that item (the whole chapter when `target.kind` is `chapter`) and leaves everything else as it is.
-3. **Always call `finish_job` afterwards**, even when `regenerate` reported a problem, so the job returns to `ready` (the earlier version of the item is still saved). If `finish_job` refuses, follow steps 4 and 5 of Write.
+3. **Always call `finish_job` afterwards**, even when `regenerate` reported a problem, so the job returns to `ready` (the earlier version of the item is still saved). If `finish_job` refuses, follow steps 4 and 5 of Write (an `INCOMPLETE` refusal gets one `write_course` for its chapters; anything else goes to `fail_job`).
 
 ## Language
 
@@ -81,4 +81,4 @@ The admin asked to rewrite one item (`target`) following an `instruction`. The p
 
 ## Errors
 
-Engine errors read "CODE: detail". On `INVALID` or "Unknown reference", fix what the detail names and try again. On `BAD_STATE`, call `get_job` and check the job's status: if the phase is already done, stop; otherwise do not retry: call `report_progress` (kind `error`) with one sentence naming the problem and stop. If you cannot continue at all for any other reason, do the same.
+Engine errors read "CODE: detail". On `INVALID` or "Unknown reference", fix what the detail names and try again. On `BAD_STATE`, call `get_job` and check the job's status: if the command's phase is already done (for example `ready` after a write), stop. If the job is in another phase than the command needs (for example `outline_ready` for a write), call `report_progress` (kind `error`) with one sentence and stop without failing the job. Otherwise (the job is in this command's phase but you cannot continue) do not retry: call **`fail_job`** with the real cause and stop. Do the same for any other problem that stops the command: `fail_job` sets the job `failed` with your message, so the admin sees it at once and can **Retry phase**.

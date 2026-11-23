@@ -135,6 +135,20 @@ export type JobBrief = {
   };
 };
 
+/**
+ * What `engine.getChapterContent` returns: one chapter's saved content, so a regenerate can ground
+ * a rewritten item in what learners already read. Bodies are capped at `CHAPTER_BODY_CAP` characters
+ * (`truncated` says so); deck and test only as context (slide titles, question prompts; no answers).
+ */
+export type ChapterContent = {
+  chapterOrder: number;
+  title: string;
+  lessons: { order: number; title: string; body: string; truncated: boolean }[];
+  deckSlideTitles: string[];
+  testPrompts: string[];
+};
+export const CHAPTER_BODY_CAP = 12_000;
+
 export const LENGTH_PRESETS: Record<Length, { chapters: number; minSub: number; maxSub: number }> = {
   short: { chapters: 3, minSub: 2, maxSub: 3 },
   medium: { chapters: 5, minSub: 3, maxSub: 3 },

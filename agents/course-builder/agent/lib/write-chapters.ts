@@ -1,6 +1,6 @@
 import type { WorkflowToolContext } from "eve/tools";
 import type { EventKind } from "../../../../convex/lib/engineTypes";
-import { engineFromEnv, type JobBrief } from "./engine-client";
+import { engineFromEnv, type ChapterContent, type JobBrief } from "./engine-client";
 import { engineSafe, type ToolFailure } from "./tool-result";
 import { buildWriterBrief, writerOutputSchema, type WriterOutput } from "./writer-brief";
 
@@ -33,6 +33,18 @@ const MESSAGE_MAX = 2_000;
 export async function loadJob(jobId: string): Promise<{ ok: true; job: JobBrief } | ToolFailure> {
   "use step";
   return engineSafe(async () => ({ ok: true as const, job: await engineFromEnv().getJob({ jobId }) }));
+}
+
+/** Step: one chapter's saved content (lesson bodies, deck titles, test prompts) for a regenerate. */
+export async function loadChapterContent(
+  jobId: string,
+  chapterOrder: number,
+): Promise<{ ok: true; content: ChapterContent } | ToolFailure> {
+  "use step";
+  return engineSafe(async () => ({
+    ok: true as const,
+    content: await engineFromEnv().getChapterContent({ jobId, chapterOrder }),
+  }));
 }
 
 /** Step: log a progress event. Never throws: a lost progress line must not stop the writers. */
@@ -118,15 +130,28 @@ export function incompleteReason(job: JobBrief, result: ChapterResult): string |
 
 /**
  * Reads a `finishJob` refusal ("INCOMPLETE: Chapter 2: deck missing; Chapter 3: lesson "x" has no
- * body"): one line per gap, and the chapters named in it (sorted, unique) to write again.
+ * body"): one line per gap, and the chapters named in it (sorted, unique) to write again. The
+ * number is read only at a gap's start, and a lesson gap runs to its closing `" has no body`, so a
+ * lesson title containing "; " or "Chapter 9:" neither splits a gap nor adds a chapter.
  */
 export function missingFromRefusal(message: string): { missing: string[]; chapterOrders: number[] } {
   const detail = message.replace(/^[A-Z_]+:\s*/, "");
-  const orders = [...detail.matchAll(/\bChapter (\d+):/g)].map((m) => Number(m[1]));
-  return {
-    missing: detail.split("; ").filter((line) => line.trim() !== ""),
-    chapterOrders: [...new Set(orders)].sort((a, b) => a - b),
-  };
+  const missing: string[] = [];
+  const orders: number[] = [];
+  let rest = detail;
+  while (rest.trim() !== "") {
+    const head = /^Chapter (\d+): /.exec(rest);
+    let end = -1;
+    if (head && rest.startsWith('lesson "', head[0].length)) {
+      const close = rest.indexOf('" has no body', head[0].length);
+      if (close >= 0) end = close + '" has no body'.length;
+    }
+    if (end < 0) end = rest.includes("; ") ? rest.indexOf("; ") : rest.length;
+    missing.push(rest.slice(0, end).trim());
+    if (head) orders.push(Number(head[1]));
+    rest = rest.slice(end).replace(/^; /, "");
+  }
+  return { missing: missing.filter(Boolean), chapterOrders: [...new Set(orders)].sort((a, b) => a - b) };
 }
 
 /** The progress line for one finished full-chapter run. */

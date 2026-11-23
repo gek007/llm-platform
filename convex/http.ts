@@ -47,6 +47,7 @@ type EngineOp =
 
 const ENGINE_OPS = new Map<string, EngineOp>([
   ["getJob", { kind: "query", ref: internal.engine.getJob }],
+  ["getChapterContent", { kind: "query", ref: internal.engine.getChapterContent }],
   ["setResourceStatus", { kind: "mutation", ref: internal.engine.setResourceStatus }],
   ["saveSources", { kind: "mutation", ref: internal.engine.saveSources }],
   ["saveOutline", { kind: "mutation", ref: internal.engine.saveOutline }],

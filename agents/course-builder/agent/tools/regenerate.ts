@@ -1,12 +1,21 @@
 import { defineWorkflowTool } from "eve/tools";
 import { z } from "zod";
-import { chapterInstructionSection, onlyRedoSection, targetName } from "../lib/regenerate";
-import { chaptersToWrite, loadJob, logProgress, runWriter, writeChapters } from "../lib/write-chapters";
+import { chapterInstructionSection, onlyRedoSection, savedContentSection, targetName } from "../lib/regenerate";
+import {
+  chaptersToWrite,
+  loadChapterContent,
+  loadJob,
+  logProgress,
+  runWriter,
+  writeChapters,
+} from "../lib/write-chapters";
 
 /**
  * Regenerate one item for the admin. `chapter` → the write fan-out for that one chapter, with the
  * instruction; `subchapter` / `deck` / `test` → one chapter-writer run with the chapter's brief plus
- * "Only redo <target>: <instruction>", so the writer saves only that item. The route moved the job
+ * "Only redo <target>: <instruction>" and the chapter's saved content (lesson bodies, deck titles,
+ * test prompts; engine `getChapterContent`), so the writer saves only that item and grounds it in
+ * what learners already read. The first write never loads saved content. The route moved the job
  * ready → writing before dispatching; the agent calls `finish_job` afterwards (back to ready).
  */
 export default defineWorkflowTool({
@@ -50,16 +59,19 @@ export default defineWorkflowTool({
       };
     }
 
+    const saved = await loadChapterContent(jobId, chapter.order);
+    if (!saved.ok) return saved;
     const name = targetName(target, chapter);
     await logProgress(jobId, "info", `Regenerating ${name}`, chapter.order);
-    const run = await runWriter(ctx, job, chapter.order, onlyRedoSection(target, chapter, instruction));
+    const extra = `${onlyRedoSection(target, chapter, instruction)}\n\n${savedContentSection(target, saved.content)}`;
+    const run = await runWriter(ctx, job, chapter.order, extra);
     if (!run.ok) {
       const message = `Regenerating ${name} failed: ${run.failure.reason}`;
       await logProgress(jobId, "chapter", message, chapter.order);
       return { ok: false as const, message };
     }
-    const { saved, problems } = run.result;
-    const redone = target.kind === "deck" ? saved.deck : target.kind === "test" ? saved.test : saved.subchapters >= 1;
+    const { saved: report, problems } = run.result;
+    const redone = target.kind === "deck" ? report.deck : target.kind === "test" ? report.test : report.subchapters >= 1;
     const issues = problems.length > 0 ? `: ${problems.join("; ")}` : "";
     const outcome = !redone
       ? `Regenerating ${name} did not save it${issues}`
@@ -67,6 +79,6 @@ export default defineWorkflowTool({
         ? `Regenerated ${name} with problems${issues}`
         : `Regenerated ${name}`;
     await logProgress(jobId, "chapter", outcome, chapter.order);
-    return { ok: true as const, target, redone, saved, problems };
+    return { ok: true as const, target, redone, saved: report, problems };
   },
 });

@@ -54,6 +54,11 @@ describe("eval fake engine", () => {
     expect(await client.saveTest({ jobId: "fakejob_tiny_course", chapterOrder: 1, questions })).toEqual({ testId: "test-1", version: 1 });
     await client.finishJob({ jobId: "fakejob_tiny_course" });
     expect(engine.job.status).toBe("ready");
+    expect(await client.getChapterContent({ jobId: "fakejob_tiny_course", chapterOrder: 1 })).toMatchObject({
+      lessons: [{ order: 1, truncated: false }, { order: 2, truncated: false }],
+      deckSlideTitles: ["S1", "S2", "S3", "S4", "S5", "S6"],
+      testPrompts: expect.arrayContaining(["Statement 1"]),
+    });
     expect((await client.getJob({ jobId: "fakejob_tiny_course" })).course?.chapters[0]).toMatchObject({ hasDeck: true, hasTest: true });
     // Content saves are refused once the job is ready (R6).
     await expect(client.saveDeck({ jobId: "fakejob_tiny_course", chapterOrder: 1, slides })).rejects.toThrow(/^BAD_STATE/);

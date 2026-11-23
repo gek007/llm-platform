@@ -44,6 +44,9 @@ describe("course-builder agent configuration", () => {
       "once more",
       "Always call `finish_job` afterwards",
       "kind `error`",
+      // fix round 1: job-level failures
+      "fail_job",
+      "INCOMPLETE",
     ]) {
       expect(text).toContain(needle);
     }
