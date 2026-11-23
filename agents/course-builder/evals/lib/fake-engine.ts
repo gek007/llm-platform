@@ -2,7 +2,12 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { CHAPTER_BODY_CAP, type EventKind, type JobBrief, type Question, type Slide } from "../../../../convex/lib/engineTypes";
 import { validateQuestion } from "../../../../convex/lib/grading";
-import { findUnknownRefs, findUnknownRefsInText, type KnownRefs } from "../../../../convex/lib/sourceScan";
+import {
+  findResourceBlockIds,
+  findUnknownRefs,
+  findUnknownRefsInText,
+  type KnownRefs,
+} from "../../../../convex/lib/sourceScan";
 
 /**
  * An in-memory stand-in for the Convex `/engine/*` HTTP API (convex/http.ts + convex/engine.ts) for
@@ -10,8 +15,8 @@ import { findUnknownRefs, findUnknownRefsInText, type KnownRefs } from "../../..
  * same wire format (`POST /engine/<op>`, `{ ok: true, ...result }` or `{ ok: false, error:
  * "CODE: detail" }`) and validates content saves the way the real engine does where that is cheap:
  * job state, chapter/subchapter existence, text limits, slide and question counts and shapes
- * (the real `validateQuestion`), sourceIds belonging to the job, and "no invented links" (the real
- * `findUnknownRefs` / `findUnknownRefsInText`). `finishJob` lists what is missing like the real one.
+ * (the real `validateQuestion`), sourceIds belonging to the job, no ```resource block for pasted
+ * text, and "no invented links" (the real `findUnknownRefs` / `findUnknownRefsInText`). `finishJob` lists what is missing like the real one.
  * Accepts any non-empty bearer token (it is local and holds no secrets).
  */
 
@@ -136,6 +141,11 @@ export function createFakeEngine(job: FakeJob) {
       const sourceIds = Array.isArray(a.sourceIds) ? (a.sourceIds as string[]) : fail("INVALID", "sourceIds");
       for (const id of sourceIds) {
         if (!job.sources.some((s) => s.id === id)) fail("NOT_FOUND", `source ${id} is not a source of this job`);
+      }
+      for (const id of findResourceBlockIds(body)) {
+        if (job.resources.some((r) => r.id === id && r.kind === "text")) {
+          fail("INVALID", `resource ${id} is pasted text: source material only; never place it with a \`\`\`resource block`);
+        }
       }
       rejectUnknownRefs({ markdown: body, texts: [title, summary] });
       Object.assign(lesson, { title, summary, body: a.body as string, durationMinutes: minutes, sourceIds });

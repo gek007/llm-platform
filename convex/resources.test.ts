@@ -2,8 +2,10 @@
 // @vitest-environment edge-runtime
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
+import { buildWriterBrief } from "../agents/course-builder/agent/lib/writer-brief";
+import { parseResourceBlock } from "../src/components/markdown/embeds";
 
 const modules = import.meta.glob(["./**/*.{ts,js}", "!./**/*.test.ts", "!./**/*.d.ts"]);
 const issuer = "https://example.clerk.accounts.dev";
@@ -98,5 +100,47 @@ describe("resources.getForViewer", () => {
       await ctx.db.patch(link, { url: "javascript:alert(1)" });
     });
     expect(await asUser(t).query(api.resources.getForViewer, { resourceId: link })).toBeNull();
+  });
+});
+
+describe("writer-brief blocks resolve for learners", () => {
+  it("every ```resource block the writer brief can emit resolves in getForViewer", async () => {
+    const t = makeT();
+    const jobId = await asAdmin(t).mutation(api.generation.createJob, {
+      topic: "Budgeting", language: "en", level: "beginner", length: "short",
+    });
+    const ids = await t.run(async (ctx) => {
+      const base = { jobId, origin: "admin" as const, readStatus: "read" as const };
+      return {
+        url: await ctx.db.insert("courseResources", { ...base, kind: "url", title: "Docs", url: "https://example.com/docs" }),
+        pdf: await ctx.db.insert("courseResources", {
+          ...base, kind: "pdf", title: "Sheet", storageId: await ctx.storage.store(new Blob(["%PDF"])),
+        }),
+        youtube: await ctx.db.insert("courseResources", {
+          ...base, kind: "youtube", title: "Talk", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", readStatus: "embed_only",
+        }),
+        text: await ctx.db.insert("courseResources", { ...base, kind: "text", title: "Notes", text: "Track spending." }),
+      };
+    });
+    const outline = {
+      chapters: [
+        { title: "One", goal: "g", subchapters: [{ title: "A", goal: "g", resourceIds: Object.values(ids) }] },
+      ],
+    };
+    await t.run((ctx) => ctx.db.patch(jobId, { status: "outline_ready", outline }));
+    const courseId = await asAdmin(t).mutation(api.generation.approveOutline, { jobId });
+    await t.run((ctx) => ctx.db.patch(courseId, { status: "published" }));
+
+    const brief = buildWriterBrief(await t.query(internal.engine.getJob, { jobId }), 1);
+    const blocks = [...brief.matchAll(/```resource\n(.*)\n```/g)].map((m) => {
+      const parsed = parseResourceBlock(m[1]);
+      if (!parsed.ok) throw new Error(`bad block ${m[1]}`);
+      return parsed.resourceId;
+    });
+    // Web pages and PDFs become blocks; YouTube is a ```youtube block; pasted text never is.
+    expect(new Set(blocks)).toEqual(new Set([ids.url, ids.pdf]));
+    for (const resourceId of blocks) {
+      expect(await asUser(t).query(api.resources.getForViewer, { resourceId })).not.toBeNull();
+    }
   });
 });

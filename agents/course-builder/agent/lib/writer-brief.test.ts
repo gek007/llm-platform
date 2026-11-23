@@ -99,12 +99,24 @@ describe("buildWriterBrief", () => {
     expect(brief).toContain('```youtube\n{"videoId":"abcdefghijk","title":"Envelope method"}\n```');
   });
 
+  test("pasted text is source material only: listed under Pasted material, never a block", () => {
+    const brief = buildWriterBrief(job(), 2);
+    expect(brief).not.toContain('{"resourceId":"res-text"}');
+    expect(brief).not.toContain("res-text");
+    expect(brief).toContain("## Pasted material");
+    expect(brief).toContain('- "Teacher\'s checklist": 1. Track every expense for a week.');
+    expect(brief).toMatch(/source material only.*Never place it with a ```resource block/);
+    // Every chapter's writer gets the job's pasted text (it can't be planned for a lesson).
+    expect(buildWriterBrief(job(), 1)).toContain("Track every expense for a week.");
+    // Without pasted text there is no such section.
+    const noText = job({ resources: job().resources.filter((r) => r.kind !== "text") });
+    expect(buildWriterBrief(noText, 2)).not.toContain("## Pasted material");
+  });
+
   test("offers only this chapter's readable planned resources, with their embed blocks", () => {
     const brief = buildWriterBrief(job(), 2);
     expect(brief).toContain('```resource\n{"resourceId":"res-pdf"}\n```');
     expect(brief).toContain('```youtube\n{"videoId":"dQw4w9WgXcQ","title":"Budgeting in 5 minutes"}\n```');
-    expect(brief).toContain('```resource\n{"resourceId":"res-text"}\n```');
-    expect(brief).toContain("Track every expense for a week.");
     // Another chapter's resource, an unreadable one and a storage URL never appear.
     expect(brief).not.toContain("res-other");
     expect(brief).not.toContain("Investing primer");
@@ -133,7 +145,7 @@ describe("buildWriterBrief", () => {
     expect(brief).not.toContain("Add up every monthly income source");
     // Exact title match keeps the video and text on "Track your spending", now 2.1.
     expect(brief).toContain('- Subchapter 2.1, YouTube video "Budgeting in 5 minutes"');
-    expect(brief).toContain('- Subchapter 2.1, Text "Teacher\'s checklist"');
+    expect(brief).not.toContain('Text "Teacher\'s checklist"');
     // The renamed lesson's PDF lands at chapter level, never on a neighbour by position.
     expect(brief).toContain('- Chapter 2, planned for "List your income", PDF "Budget guide"');
     expect(brief).not.toMatch(/Subchapter 2\.\d, PDF "Budget guide"/);

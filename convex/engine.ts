@@ -17,6 +17,7 @@ import {
 } from "./lib/engineTypes";
 import { logEvent, transition, validateOutline, type JobCtx } from "./lib/jobs";
 import {
+  findResourceBlockIds,
   findUnknownRefs,
   findUnknownRefsInText,
   normalizeUrl,
@@ -35,7 +36,8 @@ import { youtubeIdFromUrl } from "../src/components/markdown/embeds";
  *
  * State rules (status a call needs; a `failed` job resumes to its phase and logs "Resumed"):
  * - research: setResourceStatus, saveOutline → `researching` (failed before approval resumes there).
- * - saveSources, reportProgress → `researching` or `writing` (writers may cite new sources).
+ * - saveSources → `researching` or `writing` (writers may cite new sources); reportProgress also
+ *   in `outline_ready` (the research phase reports its outline after saving it).
  * - content: saveSubchapter, saveDeck, saveTest, finishJob → `writing` (failed after approval
  *   resumes there). `ready` is refused: a regenerate moves the job back to `writing` first.
  * - The job's course must still be a draft for content writes and for any failed → writing resume
@@ -137,7 +139,8 @@ async function jobSources(ctx: Pick<QueryCtx, "db">, jobId: Id<"generationJobs">
 
 /**
  * What lesson content may reference: the job's sources plus its resources (admin resources count
- * as sources automatically; PDFs and text are placed with ```resource blocks).
+ * as sources automatically; PDFs are placed with ```resource blocks). Pasted-text resources are
+ * refused before this check (see rejectTextResourceBlocks).
  */
 async function knownRefs(ctx: Pick<QueryCtx, "db">, jobId: Id<"generationJobs">): Promise<KnownRefs> {
   const known: KnownRefs = { urls: new Set(), videoIds: new Set(), resourceIds: new Set() };
@@ -168,6 +171,18 @@ function rejectUnknownRefs(
   const refs = new Set(markdown === undefined ? [] : findUnknownRefs(markdown, known));
   for (const text of texts) for (const ref of findUnknownRefsInText(text, known)) refs.add(ref);
   if (refs.size > 0) throw new ConvexError(`Unknown reference: ${[...refs].join(", ")}`);
+}
+
+const TEXT_RESOURCE_RULE =
+  "is pasted text: source material only. Use its content in your own words; never place it with a ```resource block, never cite it as [n] and never put it in resourceIds";
+
+/** Pasted-text resources are never shown to learners, so a ```resource block may not place one. */
+async function rejectTextResourceBlocks(ctx: Pick<QueryCtx, "db">, jobId: Id<"generationJobs">, markdown: string) {
+  const placed = new Set(findResourceBlockIds(markdown));
+  if (placed.size === 0) return;
+  for (const r of await jobResources(ctx, jobId)) {
+    if (r.kind === "text" && placed.has(r._id)) fail("INVALID", `resource ${r._id} ${TEXT_RESOURCE_RULE}`);
+  }
 }
 
 async function chapterOf(ctx: Pick<QueryCtx, "db">, job: Doc<"generationJobs">, chapterOrder: number) {
@@ -388,7 +403,9 @@ export const saveOutline = internalMutation({
     } catch {
       fail("INVALID", "an outline needs 1-10 chapters with 1-5 subchapters each");
     }
-    const resourceIds = new Set((await jobResources(ctx, job._id)).map((r) => r._id as string));
+    const resources = await jobResources(ctx, job._id);
+    const resourceIds = new Set(resources.map((r) => r._id as string));
+    const textIds = new Set(resources.filter((r) => r.kind === "text").map((r) => r._id as string));
     const unknown = new Set<string>();
     for (const ch of outline.chapters) {
       requireText(ch.title, "chapter title", LIMITS.title);
@@ -396,7 +413,10 @@ export const saveOutline = internalMutation({
       for (const s of ch.subchapters) {
         requireText(s.title, "subchapter title", LIMITS.title);
         requireText(s.goal, "subchapter goal", LIMITS.summary);
-        for (const id of s.resourceIds ?? []) if (!resourceIds.has(id)) unknown.add(`resource:${id}`);
+        for (const id of s.resourceIds ?? []) {
+          if (textIds.has(id)) fail("INVALID", `resource ${id} ${TEXT_RESOURCE_RULE}`);
+          if (!resourceIds.has(id)) unknown.add(`resource:${id}`);
+        }
       }
     }
     if (unknown.size > 0) throw new ConvexError(`Unknown reference: ${[...unknown].join(", ")}`);
@@ -415,7 +435,13 @@ export const reportProgress = internalMutation({
     chapterOrder: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const job = await enter(ctx, await loadJob(ctx, args.jobId), "reportProgress", ["researching", "writing"]);
+    // outline_ready too: the research phase reports its outline right after save_outline (no
+    // status change; only a failed job resumes, as for any write).
+    const job = await enter(ctx, await loadJob(ctx, args.jobId), "reportProgress", [
+      "researching",
+      "outline_ready",
+      "writing",
+    ]);
     const message = requireText(args.message, "message", LIMITS.message);
     if (args.chapterOrder !== undefined) requireOrder(args.chapterOrder, "chapterOrder");
     await logEvent(ctx, job._id, args.kind, message, args.chapterOrder);
@@ -459,6 +485,7 @@ export const saveSubchapter = internalMutation({
       if (!source || source.jobId !== job._id) fail("NOT_FOUND", `source ${raw} is not a source of this job`);
       if (!sourceIds.includes(source._id)) sourceIds.push(source._id);
     }
+    await rejectTextResourceBlocks(ctx, job._id, args.body);
     // The body is markdown; title and summary are plain text (an invented URL there still counts).
     rejectUnknownRefs(await knownRefs(ctx, job._id), { markdown: args.body, texts: [title, summary] });
 

@@ -144,3 +144,21 @@ export function findUnknownRefs(markdown: string, known: KnownRefs): string[] {
   visit(processor.parse(markdown) as Root);
   return [...unknown];
 }
+
+/**
+ * The resource IDs of every ```resource block in lesson markdown that would render (same parser and
+ * fence rule as findUnknownRefs). The engine uses it to refuse blocks that place a pasted-text
+ * resource: pasted text is source material only and is never shown to learners.
+ */
+export function findResourceBlockIds(markdown: string): string[] {
+  const ids = new Set<string>();
+  const visit = (node: Nodes) => {
+    if (node.type === "code" && fenceLanguage(node.lang) === "resource") {
+      const parsed = parseResourceBlock(node.value);
+      if (parsed.ok) ids.add(parsed.resourceId);
+    }
+    if ("children" in node) for (const child of node.children) visit(child);
+  };
+  visit(processor.parse(markdown) as Root);
+  return [...ids];
+}

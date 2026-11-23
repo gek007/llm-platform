@@ -285,6 +285,32 @@ describe("research phase", () => {
     const other = { chapters: [outline2x2.chapters[0]] };
     expect((await post(t, "saveOutline", { jobId, outline: other })).json.error).toMatch(/BAD_STATE/);
   });
+  it("saveOutline refuses a pasted-text resource in resourceIds with INVALID", async () => {
+    const t = makeT();
+    const jobId = await asAdmin(t).mutation(api.generation.createJob, jobArgs);
+    const textId = await asAdmin(t).mutation(api.generation.addResource, { jobId, kind: "text", text: "Notes" });
+    const urlId = await asAdmin(t).mutation(api.generation.addResource, { jobId, kind: "url", url: "https://example.org/a" });
+    await asAdmin(t).mutation(api.generation.startJob, { jobId });
+    const place = (ids: string[]) => ({
+      chapters: [{ ...outline2x2.chapters[0], subchapters: [{ ...sub("A"), resourceIds: ids }, sub("B")] }, outline2x2.chapters[1]],
+    });
+    const res = await post(t, "saveOutline", { jobId, outline: place([urlId, textId]) });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toMatch(new RegExp(`^INVALID: resource ${textId} is pasted text`));
+    expect((await job(t, jobId))?.status).toBe("researching");
+    expect((await post(t, "saveOutline", { jobId, outline: place([urlId]) })).status).toBe(200);
+  });
+  it("reportProgress is accepted in outline_ready (no status change) and refused once ready", async () => {
+    const t = makeT();
+    const jobId = await researchingJob(t);
+    expect((await post(t, "saveOutline", { jobId, outline: outline2x2 })).status).toBe(200);
+    const res = await post(t, "reportProgress", { jobId, kind: "outline", message: "Outline ready: 2 chapters" });
+    expect(res.status).toBe(200);
+    expect((await job(t, jobId))?.status).toBe("outline_ready");
+    expect((await events(t, jobId)).some((e) => e.message === "Outline ready: 2 chapters")).toBe(true);
+    await setStatus(t, jobId, "ready");
+    expect((await post(t, "reportProgress", { jobId, kind: "error", message: "x" })).json.error).toMatch(/^BAD_STATE/);
+  });
   it("reportProgress logs an event; setResourceStatus updates the job's resource only", async () => {
     const t = makeT();
     const jobId = await researchingJob(t);
@@ -384,6 +410,21 @@ describe("saveSubchapter", () => {
       `[watch](${videoUrl})`,
     ].join("\n");
     expect((await post(t, "saveSubchapter", sub11(jobId, { body: md }))).status).toBe(200);
+  });
+  it("a ```resource block placing a pasted-text resource is INVALID; nothing is written", async () => {
+    const t = makeT();
+    const jobId = await asAdmin(t).mutation(api.generation.createJob, jobArgs);
+    const textId = await asAdmin(t).mutation(api.generation.addResource, { jobId, kind: "text", text: "Notes" });
+    await setStatus(t, jobId, "outline_ready", { outline: outline2x2 });
+    await asAdmin(t).mutation(api.generation.approveOutline, { jobId });
+    const md = ["Intro.", "", "```resource", JSON.stringify({ resourceId: textId }), "```"].join("\n");
+    const res = await post(t, "saveSubchapter", sub11(jobId, { body: md }));
+    expect(res.status).toBe(400);
+    expect(res.json.error).toMatch(new RegExp(`^INVALID: resource ${textId} is pasted text: source material only`));
+    const lessons = await t.run((ctx) => ctx.db.query("lessons").collect());
+    expect(lessons.every((l) => l.body === "")).toBe(true);
+    // Using the text's content without a block is fine.
+    expect((await post(t, "saveSubchapter", sub11(jobId, { body: "From the notes: track expenses." }))).status).toBe(200);
   });
   it("is BAD_STATE outside writing (researching, ready)", async () => {
     const t = makeT();

@@ -37,8 +37,9 @@ type Resource = JobBrief["resources"][number];
 
 /**
  * The message that starts one chapter-writer run: the course brief, the chapter's plan, the job's
- * saved sources (with excerpts), the admin resources planned for this chapter (with ready-to-paste
- * embed blocks) and the save rules. Pure and deterministic.
+ * saved sources (with excerpts), the admin's pasted text (source material only), the admin
+ * resources planned for this chapter (with ready-to-paste embed blocks) and the save rules. Pure
+ * and deterministic.
  *
  * Titles and goals come from the course rows (`summary` holds the outline goal from approval and
  * follows the admin's renames and reorders). Planned `resourceIds` exist only in the frozen outline:
@@ -46,8 +47,9 @@ type Resource = JobBrief["resources"][number];
  * resource goes to the subchapter with exactly the same title, and resources of outline subchapters
  * that match no lesson are offered at chapter level, tagged with the outline title, for the writer
  * to place. Never by position, so a resource can't land on a neighbouring lesson.
- * Only readable resources are offered: PDFs, pasted text and web pages as ```resource blocks (never
- * a storage URL), YouTube as a ```youtube block.
+ * Only readable resources are offered: PDFs and web pages as ```resource blocks (never a storage
+ * URL), YouTube as a ```youtube block. Pasted text is never a block (learners never see it): every
+ * readable text resource of the job is listed under "Pasted material" for the writer to draw on.
  */
 export function buildWriterBrief(job: JobBrief, chapterOrder: number): string {
   const chapter = job.course?.chapters.find((c) => c.order === chapterOrder);
@@ -81,6 +83,8 @@ export function buildWriterBrief(job: JobBrief, chapterOrder: number): string {
     if (videoId) line += `\n  Embeddable video, block:\n${fence("youtube", { videoId, title: s.title })}`;
     return line;
   });
+
+  const pasted = job.resources.filter((r) => r.kind === "text" && r.readStatus !== "unreadable" && r.text?.trim());
 
   const out: string[] = [];
   out.push(
@@ -126,16 +130,24 @@ export function buildWriterBrief(job: JobBrief, chapterOrder: number): string {
   } else {
     out.push("No saved sources: cite nothing (no `[n]`), pass `sourceIds: []` and put no http(s) links anywhere.");
   }
+  if (pasted.length > 0) {
+    out.push(
+      "",
+      "## Pasted material",
+      "",
+      "Text the admin pasted for this course. It is source material only: draw on its content where it fits this chapter, in your own words. Never place it with a ```resource block, never cite it as `[n]` and never link it.",
+      "",
+      ...pasted.map((r) => `- "${oneLine(r.title)}": ${preview(r.text ?? "", TEXT_PREVIEW)}`),
+    );
+  }
   out.push("", "## Resources you may embed", "");
   if (embeds.length > 0) {
     out.push(
       "Admin resources planned for this chapter. Embed one only in its subchapter (one marked \"Chapter N, planned for ...\" was planned for a lesson that has since been renamed or removed: put it in the subchapter where it fits best, or leave it out) and only when it clearly helps, by pasting its block exactly as shown (one fenced block on its own lines). These are not `[n]` sources.",
       "",
-      ...embeds.map(({ label, r, block }) => {
-        let line = `- ${label}, ${KIND_LABEL[r.kind]} "${oneLine(r.title)}"`;
-        if (r.kind === "text" && r.text?.trim()) line += `\n  Text: ${preview(r.text, TEXT_PREVIEW)}`;
-        return `${line}\n  Block:\n${block}`;
-      }),
+      ...embeds.map(
+        ({ label, r, block }) => `- ${label}, ${KIND_LABEL[r.kind]} "${oneLine(r.title)}"\n  Block:\n${block}`,
+      ),
     );
   } else {
     out.push("No admin resources are planned for this chapter. Do not add ```resource blocks.");
@@ -160,9 +172,12 @@ const KIND_LABEL: Record<Resource["kind"], string> = {
   youtube: "YouTube video",
 };
 
-/** The embed block for a planned resource, or null when it can't be shown (unreadable, no video ID). */
+/**
+ * The embed block for a planned resource, or null when it can't be shown (unreadable, no video ID)
+ * or must not be: pasted text is source material only and never a learner-facing block.
+ */
 function embedBlock(r: Resource): string | null {
-  if (r.readStatus === "unreadable") return null;
+  if (r.readStatus === "unreadable" || r.kind === "text") return null;
   if (r.kind === "youtube") {
     const videoId = r.url ? youtubeIdFromUrl(r.url) : null;
     return videoId ? fence("youtube", { videoId, title: r.title }) : null;
