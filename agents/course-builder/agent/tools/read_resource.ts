@@ -107,7 +107,7 @@ export default defineTool({
             return unreadable(message(err));
           }
           const pages = estimatePdfPages(pdf.data);
-          if (pages === null) return unreadable("no pages found in the PDF (it may be encrypted or damaged)");
+          if (pages === null) return unreadable("could not count the PDF's pages (it may be encrypted, damaged or unusually complex)");
           if (pages > PDF_MODEL_MAX_PAGES) {
             return unreadable(`the PDF has ${pages} pages; the model accepts up to ${PDF_MODEL_MAX_PAGES}`);
           }
