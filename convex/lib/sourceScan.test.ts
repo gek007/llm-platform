@@ -82,3 +82,16 @@ describe("findUnknownRefs", () => {
     ]);
   });
 });
+
+describe("findUnknownRefs fence detection (shared fenceLanguage)", () => {
+  const body = JSON.stringify({ videoId: "aaaaaaaaaaa", title: "T" });
+  it("checks every fence the renderer embeds, including ~~~ fences and info with meta", () => {
+    expect(scan("~~~youtube\n" + body + "\n~~~")).toEqual(["youtube:aaaaaaaaaaa"]);
+    expect(scan('```youtube {"x":1}\n' + body + "\n```")).toEqual(["youtube:aaaaaaaaaaa"]);
+  });
+  it("crafted info strings are not embeds (the renderer shows them as code too)", () => {
+    for (const info of [".language-youtube", "x.language-youtube", "youtube.x", "YOUTUBE"]) {
+      expect(scan("```" + info + "\n" + body + "\n```")).toEqual([]);
+    }
+  });
+});

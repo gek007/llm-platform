@@ -2,7 +2,12 @@ import type { Nodes, Root } from "mdast";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
-import { parseResourceBlock, parseYoutubeBlock, youtubeIdFromUrl } from "../../src/components/markdown/embeds";
+import {
+  fenceLanguage,
+  parseResourceBlock,
+  parseYoutubeBlock,
+  youtubeIdFromUrl,
+} from "../../src/components/markdown/embeds";
 
 /**
  * "No invented links": finds every reference in lesson markdown that the job has not seen.
@@ -15,7 +20,7 @@ import { parseResourceBlock, parseYoutubeBlock, youtubeIdFromUrl } from "../../s
  *   are always reported; in-site relative links (`/courses/…`, `#anchor`) are allowed.
  * - http(s) URLs written as plain text (also in link text, link titles and raw HTML).
  * - ```youtube blocks' `videoId` and ```resource blocks' `resourceId`, parsed with the renderer's
- *   own parsers (src/components/markdown/embeds.ts) and the renderer's fence rule. Invalid blocks
+ *   own parsers and fence rule (`fenceLanguage`, src/components/markdown/embeds.ts). Invalid blocks
  *   render as an error box and carry no reference, so they are not reported here.
  * Other code (fenced, indented, inline) never renders as a link and is not scanned, so code samples
  * may show URLs such as http://localhost:3000.
@@ -102,8 +107,8 @@ export function findUnknownRefs(markdown: string, known: KnownRefs): string[] {
         scanText(node.value);
         break;
       case "code": {
-        // Same rule as LessonMarkdown: className `language-<lang>`, then /language-([\w-]+)/.
-        const lang = /^[\w-]+/.exec(node.lang ?? "")?.[0];
+        // Same helper as LessonMarkdown, which sees this as the `language-<lang>` class.
+        const lang = fenceLanguage(node.lang);
         if (lang === "youtube") {
           const parsed = parseYoutubeBlock(node.value);
           if (parsed.ok && !known.videoIds.has(parsed.embed.videoId)) {

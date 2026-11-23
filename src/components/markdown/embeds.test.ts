@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { parseResourceBlock, parseYoutubeBlock } from "./embeds";
+import { fenceLanguage, parseResourceBlock, parseYoutubeBlock } from "./embeds";
 
 describe("parseYoutubeBlock", () => {
   test("accepts a valid block with optional start", () => {
@@ -53,5 +53,23 @@ describe("youtubeIdFromUrl", () => {
     expect(youtubeIdFromUrl("https://youtube.com/watch?v=short")).toBeNull();
     expect(youtubeIdFromUrl("https://example.com/watch?v=dQw4w9WgXcQ")).toBeNull();
     expect(youtubeIdFromUrl("nope")).toBeNull();
+  });
+});
+
+describe("fenceLanguage", () => {
+  test("is the first whitespace-separated token when it is all word characters or dashes", () => {
+    expect(fenceLanguage("youtube")).toBe("youtube");
+    expect(fenceLanguage('youtube {"a":1}')).toBe("youtube");
+    expect(fenceLanguage("  resource\t")).toBe("resource");
+    expect(fenceLanguage("x-youtube")).toBe("x-youtube");
+    expect(fenceLanguage("YOUTUBE")).toBe("YOUTUBE");
+  });
+  test("is null for empty info or a token with other characters", () => {
+    expect(fenceLanguage(undefined)).toBeNull();
+    expect(fenceLanguage(null)).toBeNull();
+    expect(fenceLanguage("   ")).toBeNull();
+    expect(fenceLanguage("youtube.x")).toBeNull();
+    expect(fenceLanguage(".language-youtube")).toBeNull();
+    expect(fenceLanguage("c++")).toBeNull();
   });
 });

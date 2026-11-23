@@ -440,3 +440,38 @@ describe("finishJob and failJob", () => {
     expect((await job(t, jobId))?.status).toBe("failed");
   });
 });
+
+describe("published courses are off limits to the engine", () => {
+  async function publish(t: T, courseId: Id<"courses">) {
+    await t.run((ctx) => ctx.db.patch(courseId, { status: "published" }));
+  }
+  it("failed job with a published course: saveSubchapter is BAD_STATE, job stays failed, lesson unchanged", async () => {
+    const t = makeT();
+    const { jobId, courseId } = await writingJob(t);
+    await post(t, "failJob", { jobId, error: "No progress for 15 minutes" });
+    await publish(t, courseId);
+    const lessonsBefore = await t.run((ctx) => ctx.db.query("lessons").collect());
+    const res = await post(t, "saveSubchapter", sub11(jobId));
+    expect(res.status).toBe(400);
+    expect(res.json.error).toMatch(/^BAD_STATE: Course is published/);
+    expect(await job(t, jobId)).toMatchObject({ status: "failed", error: "No progress for 15 minutes" });
+    expect(await t.run((ctx) => ctx.db.query("lessons").collect())).toEqual(lessonsBefore);
+    expect((await events(t, jobId)).some((e) => e.message.includes("Resumed"))).toBe(false);
+    // The failed -> writing resume path is refused for non-content writes too.
+    expect((await post(t, "reportProgress", { jobId, kind: "info", message: "hi" })).status).toBe(400);
+    expect((await job(t, jobId))?.status).toBe("failed");
+  });
+  it("writing job whose course was published: saveDeck, saveTest, finishJob are BAD_STATE, nothing written", async () => {
+    const t = makeT();
+    const { jobId, courseId } = await writingJob(t);
+    await publish(t, courseId);
+    const deck = await post(t, "saveDeck", { jobId, chapterOrder: 1, slides: slides(6) });
+    expect(deck.status).toBe(400);
+    expect(deck.json.error).toMatch(/BAD_STATE/);
+    expect((await post(t, "saveTest", { jobId, chapterOrder: 1, questions: questions(8) })).status).toBe(400);
+    expect((await post(t, "finishJob", { jobId })).json.error).toMatch(/BAD_STATE/);
+    expect(await t.run((ctx) => ctx.db.query("slideDecks").collect())).toHaveLength(0);
+    expect(await t.run((ctx) => ctx.db.query("chapterTests").collect())).toHaveLength(0);
+    expect((await job(t, jobId))?.status).toBe("writing");
+  });
+});

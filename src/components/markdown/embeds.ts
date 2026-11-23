@@ -50,6 +50,17 @@ export function parseResourceBlock(json: string): ParsedResource {
     : { ok: false, error: describeIssue(result.error) };
 }
 
+/**
+ * The language of a fenced code block, from its info string (or, in the renderer, from the code
+ * element's `language-<lang>` class): the first whitespace-separated token, only when it is made
+ * of word characters and dashes; null otherwise. The renderer (LessonMarkdown) and the engine's
+ * source scanner both use this, so they always agree on which fences are ```youtube / ```resource.
+ */
+export function fenceLanguage(info: string | null | undefined): string | null {
+  const token = info?.trim().split(/\s+/)[0] ?? "";
+  return /^[\w-]+$/.test(token) ? token : null;
+}
+
 /** True only for absolute http(s) URLs; rejects javascript:, data:, etc. */
 export function isSafeHttpUrl(url: string): boolean {
   try {

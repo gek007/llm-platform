@@ -32,6 +32,8 @@ import { youtubeIdFromUrl } from "../src/components/markdown/embeds";
  * - saveSources, reportProgress → `researching` or `writing` (writers may cite new sources).
  * - content: saveSubchapter, saveDeck, saveTest, finishJob → `writing` (failed after approval
  *   resumes there). `ready` is refused: a regenerate moves the job back to `writing` first.
+ * - The job's course must still be a draft for content writes and for any failed → writing resume
+ *   (BAD_STATE "Course is published; …"), so AI content never lands in a live course.
  * - failJob → any non-terminal status; on an already failed job it just records the new error.
  * Every write logs a `generationEvents` row (the watchdog's liveness signal); content writes do not
  * patch the job doc, so parallel chapter writers do not conflict on it.
@@ -86,23 +88,37 @@ async function loadJob(ctx: Pick<QueryCtx, "db">, jobId: string) {
  * Admits a call allowed in `allowed`. A `failed` job resumes to its phase (`writing` once the outline
  * was approved, i.e. it has a course; else `researching`) when that phase is allowed — late agent
  * writes after the watchdog failed the job are accepted. Otherwise BAD_STATE.
+ * `content` marks ops that write course content (lessons, decks, tests, finishing).
  */
 async function enter(
   ctx: JobCtx,
   job: Doc<"generationJobs">,
   op: string,
   allowed: JobStatus[],
+  { content = false }: { content?: boolean } = {},
 ): Promise<Doc<"generationJobs">> {
-  if (allowed.includes(job.status)) return job;
-  if (job.status === "failed") {
-    const phase: JobStatus = job.courseId ? "writing" : "researching";
-    if (allowed.includes(phase)) {
-      await transition(ctx, job, ["failed"], phase, { error: undefined });
-      await logEvent(ctx, job._id, "info", `Resumed: ${op} after failure, back to ${phase}`);
-      return { ...job, status: phase, error: undefined };
-    }
+  const phase: JobStatus = job.courseId ? "writing" : "researching";
+  const resumes = job.status === "failed" && allowed.includes(phase);
+  const target = allowed.includes(job.status) ? job.status : resumes ? phase : null;
+  if (target === null) fail("BAD_STATE", `${op} is not allowed while the job is ${job.status}`);
+  // AI content reaches learners only through an admin publishing it: once the course is no longer
+  // a draft, content writes and the failed -> writing resume are refused, before anything is written.
+  if (target === "writing" && (content || resumes)) await requireDraftCourse(ctx, job);
+  if (resumes) {
+    await transition(ctx, job, ["failed"], phase, { error: undefined });
+    await logEvent(ctx, job._id, "info", `Resumed: ${op} after failure, back to ${phase}`);
+    return { ...job, status: phase, error: undefined };
   }
-  fail("BAD_STATE", `${op} is not allowed while the job is ${job.status}`);
+  return job;
+}
+
+async function requireDraftCourse(ctx: JobCtx, job: Doc<"generationJobs">) {
+  if (!job.courseId) fail("BAD_STATE", "the job has no course");
+  const course = await ctx.db.get(job.courseId);
+  if (!course) fail("NOT_FOUND", "the job's course");
+  if (course.status !== "draft") {
+    fail("BAD_STATE", "Course is published; unpublish it to let the engine write");
+  }
 }
 
 async function jobResources(ctx: Pick<QueryCtx, "db">, jobId: Id<"generationJobs">) {
@@ -421,7 +437,9 @@ export const saveSubchapter = internalMutation({
     sourceIds: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    const job = await enter(ctx, await loadJob(ctx, args.jobId), "saveSubchapter", ["writing"]);
+    const job = await enter(ctx, await loadJob(ctx, args.jobId), "saveSubchapter", ["writing"], {
+      content: true,
+    });
     const chapter = await chapterOf(ctx, job, args.chapterOrder);
     requireOrder(args.subchapterOrder, "subchapterOrder");
     const lesson = (await chapterLessons(ctx, chapter._id))[args.subchapterOrder - 1];
@@ -467,7 +485,9 @@ export const saveSubchapter = internalMutation({
 export const saveDeck = internalMutation({
   args: { jobId: v.string(), chapterOrder: v.number(), slides: v.array(slideValidator) },
   handler: async (ctx, args) => {
-    const job = await enter(ctx, await loadJob(ctx, args.jobId), "saveDeck", ["writing"]);
+    const job = await enter(ctx, await loadJob(ctx, args.jobId), "saveDeck", ["writing"], {
+      content: true,
+    });
     const chapter = await chapterOf(ctx, job, args.chapterOrder);
     const { slides } = args;
     if (slides.length < LIMITS.minSlides || slides.length > LIMITS.maxSlides) {
@@ -509,7 +529,9 @@ export const saveDeck = internalMutation({
 export const saveTest = internalMutation({
   args: { jobId: v.string(), chapterOrder: v.number(), questions: v.array(questionValidator) },
   handler: async (ctx, args) => {
-    const job = await enter(ctx, await loadJob(ctx, args.jobId), "saveTest", ["writing"]);
+    const job = await enter(ctx, await loadJob(ctx, args.jobId), "saveTest", ["writing"], {
+      content: true,
+    });
     const chapter = await chapterOf(ctx, job, args.chapterOrder);
     const { questions } = args;
     if (questions.length < LIMITS.minQuestions || questions.length > LIMITS.maxQuestions) {
@@ -563,7 +585,7 @@ export const finishJob = internalMutation({
   handler: async (ctx, { jobId }) => {
     const loaded = await loadJob(ctx, jobId);
     if (loaded.status === "ready") return {}; // replayed finish
-    const job = await enter(ctx, loaded, "finishJob", ["writing"]);
+    const job = await enter(ctx, loaded, "finishJob", ["writing"], { content: true });
     if (!job.courseId) fail("BAD_STATE", "the job has no course");
     const courseId = job.courseId;
     const chapters = await ctx.db

@@ -4,7 +4,7 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { RTL_LANGUAGES, type Language } from "../../../convex/lib/engineTypes";
 import { CodeBlock } from "./code-block";
-import { parseResourceBlock, parseYoutubeBlock } from "./embeds";
+import { fenceLanguage, parseResourceBlock, parseYoutubeBlock } from "./embeds";
 import { parseQuiz } from "./quiz";
 import { QuizBlock } from "./quiz-block";
 import { ResourceCard } from "./resource-card";
@@ -48,7 +48,9 @@ function Pre({ children, rtl }: ComponentProps<"pre"> & { rtl?: boolean }) {
   const child = Array.isArray(children) ? children[0] : children;
   if (!isValidElement(child)) return <pre>{children}</pre>;
   const code = child as ReactElement<{ className?: string; children?: ReactNode }>;
-  const language = /language-([\w-]+)/.exec(code.props.className ?? "")?.[1];
+  // remark-rehype sets `language-<first info token>`; other classes (e.g. hljs) are ignored.
+  const langClass = (code.props.className ?? "").split(/\s+/).find((c) => c.startsWith("language-"));
+  const language = fenceLanguage(langClass?.slice("language-".length)) ?? undefined;
   const text = nodeText(code.props.children).replace(/\n$/, "");
 
   if (language === "quiz") {
