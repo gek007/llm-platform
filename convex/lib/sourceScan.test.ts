@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findUnknownRefs, normalizeUrl } from "./sourceScan";
+import { findUnknownRefs, findUnknownRefsInText, normalizeUrl } from "./sourceScan";
 
 const VIDEO = "dQw4w9WgXcQ";
 const known = {
@@ -93,5 +93,19 @@ describe("findUnknownRefs fence detection (shared fenceLanguage)", () => {
     for (const info of [".language-youtube", "x.language-youtube", "youtube.x", "YOUTUBE"]) {
       expect(scan("```" + info + "\n" + body + "\n```")).toEqual([]);
     }
+  });
+});
+
+describe("findUnknownRefsInText (plain-text fields)", () => {
+  const scanText = (text: string) => findUnknownRefsInText(text, known);
+  it("reports unknown http(s) URLs anywhere in the raw string, markdown syntax or not", () => {
+    expect(scanText("`https://evil.example/s`")).toEqual(["https://evil.example/s"]);
+    expect(scanText("```\nHTTPS://evil.example/fenced\n```")).toEqual(["HTTPS://evil.example/fenced"]);
+    expect(scanText("<pre>https://evil.example/pre.</pre>")).toEqual(["https://evil.example/pre"]);
+  });
+  it("accepts known URLs and text without URLs", () => {
+    expect(scanText("See https://docs.example.com/guide/#a and https://example.org.")).toEqual([]);
+    expect(scanText("```")).toEqual([]);
+    expect(scanText(`https://youtu.be/${VIDEO}`)).toEqual([]);
   });
 });

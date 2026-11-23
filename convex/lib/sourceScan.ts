@@ -62,16 +62,37 @@ const count = (s: string, ch: string) => s.split(ch).length - 1;
 
 const processor = unified().use(remarkParse).use(remarkGfm);
 
+function checkAbsolute(raw: string, href: string, known: KnownRefs, unknown: Set<string>) {
+  const key = normalizeUrl(href);
+  if (key && known.urls.has(key)) return;
+  const videoId = youtubeIdFromUrl(href);
+  if (videoId && known.videoIds.has(videoId)) return;
+  unknown.add(raw);
+}
+
+/** Every http(s) URL in raw text (any case; trailing punctuation and unbalanced brackets trimmed). */
+function scanTextUrls(text: string, known: KnownRefs, unknown: Set<string>) {
+  for (const match of text.matchAll(TEXT_URL)) {
+    const raw = trimTrailing(match[0]);
+    checkAbsolute(raw, raw, known, unknown);
+  }
+}
+
+/**
+ * Plain-text fields (lesson title/summary, slide strings, test prompts/options/explanations): they
+ * are not markdown, so the raw string is scanned for http(s) URLs as is — markdown syntax such as
+ * backticks or fences in the text hides nothing. Scan each field on its own; never join fields
+ * (or a field and the body) into one string, or a fence in one field could swallow the next.
+ */
+export function findUnknownRefsInText(text: string, known: KnownRefs): string[] {
+  const unknown = new Set<string>();
+  scanTextUrls(text, known, unknown);
+  return [...unknown];
+}
+
+/** Lesson markdown (the body only — see findUnknownRefsInText for plain-text fields). */
 export function findUnknownRefs(markdown: string, known: KnownRefs): string[] {
   const unknown = new Set<string>();
-
-  const checkAbsolute = (raw: string, href: string) => {
-    const key = normalizeUrl(href);
-    if (key && known.urls.has(key)) return;
-    const videoId = youtubeIdFromUrl(href);
-    if (videoId && known.videoIds.has(videoId)) return;
-    unknown.add(raw);
-  };
 
   const checkDestination = (raw: string) => {
     let url: URL;
@@ -83,15 +104,9 @@ export function findUnknownRefs(markdown: string, known: KnownRefs): string[] {
     }
     if (url.protocol === SITE.protocol && url.host === SITE.host) return; // in-site relative link
     if (url.protocol !== "http:" && url.protocol !== "https:") unknown.add(raw);
-    else checkAbsolute(raw, url.href);
+    else checkAbsolute(raw, url.href, known, unknown);
   };
-
-  const scanText = (text: string) => {
-    for (const match of text.matchAll(TEXT_URL)) {
-      const raw = trimTrailing(match[0]);
-      checkAbsolute(raw, raw);
-    }
-  };
+  const scanText = (text: string) => scanTextUrls(text, known, unknown);
 
   const visit = (node: Nodes) => {
     switch (node.type) {

@@ -15,7 +15,12 @@ import {
   type Slide,
 } from "./lib/engineTypes";
 import { logEvent, transition, validateOutline, type JobCtx } from "./lib/jobs";
-import { findUnknownRefs, normalizeUrl, type KnownRefs } from "./lib/sourceScan";
+import {
+  findUnknownRefs,
+  findUnknownRefsInText,
+  normalizeUrl,
+  type KnownRefs,
+} from "./lib/sourceScan";
 import { youtubeIdFromUrl } from "../src/components/markdown/embeds";
 
 /**
@@ -156,9 +161,18 @@ async function knownRefs(ctx: Pick<QueryCtx, "db">, jobId: Id<"generationJobs">)
   return known;
 }
 
-function rejectUnknownRefs(markdown: string, known: KnownRefs) {
-  const refs = findUnknownRefs(markdown, known);
-  if (refs.length > 0) throw new ConvexError(`Unknown reference: ${refs.join(", ")}`);
+/**
+ * "No invented links" for one save: `markdown` is the lesson body (scanned as markdown, alone);
+ * `texts` are plain-text fields, each scanned on its own (never joined, so markdown syntax in one
+ * field can't hide a URL in another). Throws "Unknown reference: <ref>[, …]".
+ */
+function rejectUnknownRefs(
+  known: KnownRefs,
+  { markdown, texts = [] }: { markdown?: string; texts?: string[] },
+) {
+  const refs = new Set(markdown === undefined ? [] : findUnknownRefs(markdown, known));
+  for (const text of texts) for (const ref of findUnknownRefsInText(text, known)) refs.add(ref);
+  if (refs.size > 0) throw new ConvexError(`Unknown reference: ${[...refs].join(", ")}`);
 }
 
 async function chapterOf(ctx: Pick<QueryCtx, "db">, job: Doc<"generationJobs">, chapterOrder: number) {
@@ -461,8 +475,8 @@ export const saveSubchapter = internalMutation({
       if (!source || source.jobId !== job._id) fail("NOT_FOUND", `source ${raw} is not a source of this job`);
       if (!sourceIds.includes(source._id)) sourceIds.push(source._id);
     }
-    // Title and summary render as plain text, but an invented URL there is still an invented link.
-    rejectUnknownRefs([title, summary, args.body].join("\n\n"), await knownRefs(ctx, job._id));
+    // The body is markdown; title and summary are plain text (an invented URL there still counts).
+    rejectUnknownRefs(await knownRefs(ctx, job._id), { markdown: args.body, texts: [title, summary] });
 
     await ctx.db.patch(lesson._id, {
       title,
@@ -503,7 +517,7 @@ export const saveDeck = internalMutation({
       s.attribution ?? "",
       s.notes,
     ]);
-    rejectUnknownRefs(text.join("\n\n"), await knownRefs(ctx, job._id));
+    rejectUnknownRefs(await knownRefs(ctx, job._id), { texts: text });
 
     const existing = await ctx.db
       .query("slideDecks")
@@ -544,7 +558,7 @@ export const saveTest = internalMutation({
     const ids = questions.map((q) => q.id.trim());
     if (new Set(ids).size !== ids.length) fail("INVALID", "question ids must be unique");
     const text = questions.flatMap((q) => [q.prompt, ...q.options, q.explanation]);
-    rejectUnknownRefs(text.join("\n\n"), await knownRefs(ctx, job._id));
+    rejectUnknownRefs(await knownRefs(ctx, job._id), { texts: text });
 
     // One row per chapter (attempts reference the stable testId); version bumps on real changes only.
     const existing = await ctx.db

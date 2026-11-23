@@ -475,3 +475,41 @@ describe("published courses are off limits to the engine", () => {
     expect((await job(t, jobId))?.status).toBe("writing");
   });
 });
+
+describe("each field is scanned on its own (no cross-field fence tricks)", () => {
+  const evilBody = [
+    "See [x](https://evil.example/x).",
+    "",
+    "```youtube",
+    JSON.stringify({ videoId: "aaaaaaaaaaa", title: "T" }),
+    "```",
+  ].join("\n");
+  it.each(["```", "~~~", "<pre>"])("saveSubchapter with title %j still checks the body", async (title) => {
+    const t = makeT();
+    const { jobId } = await writingJob(t);
+    const res = await post(t, "saveSubchapter", sub11(jobId, { title, body: evilBody }));
+    expect(res.status).toBe(400);
+    expect(res.json.error).toMatch(/Unknown reference: .*https:\/\/evil\.example\/x/);
+    expect(res.json.error).toMatch(/youtube:aaaaaaaaaaa/);
+    const viaSummary = await post(t, "saveSubchapter", sub11(jobId, { summary: title, body: evilBody }));
+    expect(viaSummary.status).toBe(400);
+  });
+  it("saveDeck: a fence in one bullet does not hide a URL in the next", async () => {
+    const t = makeT();
+    const { jobId } = await writingJob(t);
+    const deck = slides(6);
+    deck[0] = { ...deck[0], bullets: ["```", "Go to https://evil.example/d"] };
+    const res = await post(t, "saveDeck", { jobId, chapterOrder: 1, slides: deck });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toBe("Unknown reference: https://evil.example/d");
+  });
+  it("saveTest: a URL in inline code in an option is reported", async () => {
+    const t = makeT();
+    const { jobId } = await writingJob(t);
+    const qs = questions(8);
+    qs[0] = { ...qs[0], options: ["`https://evil.example/s`", "B", "C"] };
+    const res = await post(t, "saveTest", { jobId, chapterOrder: 1, questions: qs });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toBe("Unknown reference: https://evil.example/s");
+  });
+});
