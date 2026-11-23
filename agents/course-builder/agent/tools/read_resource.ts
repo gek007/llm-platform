@@ -3,7 +3,8 @@ import { z } from "zod";
 import type { ReadStatus } from "../../../../convex/lib/engineTypes";
 import { engineFromEnv, type EngineClient } from "../lib/engine-client";
 import { htmlTitle, htmlToText } from "../lib/html-text";
-import { fetchPdf, fetchText } from "../lib/safe-fetch";
+import { estimatePdfPages, PDF_INLINE_MAX_BYTES, PDF_JOB_MAX_BYTES, PDF_MODEL_MAX_PAGES } from "../lib/pdf";
+import { fetchPdf, fetchPdfSize, fetchText, SafeFetchError, type FetchDeps } from "../lib/safe-fetch";
 import { engineSafe } from "../lib/tool-result";
 import { youtubeInfo } from "../lib/youtube";
 
@@ -11,14 +12,15 @@ const MAX_TEXT_CHARS = 60_000;
 /** Resource title the platform gives a YouTube link added without one (convex/generation.ts). */
 const DEFAULT_YOUTUBE_TITLE = "YouTube video";
 
-type Resource = Awaited<ReturnType<EngineClient["getJob"]>>["resources"][number];
+type Job = Awaited<ReturnType<EngineClient["getJob"]>>;
+type Resource = Job["resources"][number];
 
 type Unreadable = { ok: true; resourceId: string; kind: Resource["kind"]; title: string; readStatus: "unreadable"; reason: string };
 type Output =
   | { ok: false; message: string }
   | Unreadable
   | { ok: true; resourceId: string; kind: "url"; title: string; url: string; readStatus: "read"; pageTitle?: string; text: string; truncated: boolean }
-  | { ok: true; resourceId: string; kind: "pdf"; title: string; readStatus: "read"; bytes: number; base64: string }
+  | { ok: true; resourceId: string; kind: "pdf"; title: string; readStatus: "read"; pages: number; bytes: number; base64: string }
   | { ok: true; resourceId: string; kind: "text"; title: string; readStatus: "read"; text: string }
   | { ok: true; resourceId: string; kind: "youtube"; title: string; url: string; readStatus: "embed_only"; videoId: string; channel: string };
 
@@ -32,9 +34,24 @@ function message(err: unknown) {
   return err instanceof Error ? err.message : String(err);
 }
 
+const mb = (bytes: number) => `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
+
+/**
+ * Bytes of the job's other PDFs already marked `read` (attached to the model in this job). Sizes
+ * are probed again because Convex keeps no size; a PDF that can't be probed counts as the inline
+ * maximum, so the budget errs on the safe side.
+ */
+async function attachedPdfBytes(job: Job, except: string, deps: FetchDeps): Promise<number> {
+  const others = job.resources.filter((x) => x.kind === "pdf" && x.readStatus === "read" && x.id !== except);
+  const sizes = await Promise.all(
+    others.map((x) => (x.fileUrl ? fetchPdfSize(x.fileUrl, deps).catch(() => PDF_INLINE_MAX_BYTES) : 0)),
+  );
+  return sizes.reduce((a, b) => a + b, 0);
+}
+
 export default defineTool({
   description:
-    "Read one of the admin's resources and record its read status. Web page: its readable text (up to 60 000 characters). PDF: the document itself. Pasted text: the text. YouTube: title and channel only (embed-only; you never see the video). A resource that can't be read is marked unreadable with the reason; continue without it.",
+    "Read one of the admin's resources and record its read status. Web page: its readable text (up to 60 000 characters). PDF: the document itself (up to 100 pages and 10 MB, 15 MB for all PDFs in a job). Pasted text: the text. YouTube: title and channel only (embed-only; you never see the video). A resource that can't be read is marked unreadable with the reason; continue without it.",
   inputSchema: z.object({
     jobId: z.string().min(1).describe("The jobId from the command."),
     resourceId: z.string().min(1).describe("A resource id from get_job."),
@@ -78,14 +95,31 @@ export default defineTool({
         }
         case "pdf": {
           if (!r.fileUrl) return unreadable("the PDF file is missing");
+          // A PDF the model can't take would fail every later model call of the session (eve
+          // stores and re-sends file parts), so check pages and size budgets before attaching.
           let pdf;
           try {
-            pdf = await fetchPdf(r.fileUrl, deps);
+            pdf = await fetchPdf(r.fileUrl, { ...deps, maxBytes: PDF_INLINE_MAX_BYTES });
           } catch (err) {
+            if (err instanceof SafeFetchError && err.code === "too_large") {
+              return unreadable(`the PDF is larger than ${mb(PDF_INLINE_MAX_BYTES)}; the model reads PDFs up to ${mb(PDF_INLINE_MAX_BYTES)}`);
+            }
             return unreadable(message(err));
           }
+          const pages = estimatePdfPages(pdf.data);
+          if (pages === null) return unreadable("no pages found in the PDF (it may be encrypted or damaged)");
+          if (pages > PDF_MODEL_MAX_PAGES) {
+            return unreadable(`the PDF has ${pages} pages; the model accepts up to ${PDF_MODEL_MAX_PAGES}`);
+          }
+          const attached = await attachedPdfBytes(job, resourceId, deps);
+          if (attached + pdf.bytes > PDF_JOB_MAX_BYTES) {
+            return unreadable(
+              `PDFs in this job would exceed ${mb(PDF_JOB_MAX_BYTES)} together (already read: ${mb(attached)}, this one: ${mb(pdf.bytes)})`,
+            );
+          }
           await mark("read");
-          return { ...base, kind: "pdf", readStatus: "read", ...pdf };
+          const base64 = Buffer.from(pdf.data.buffer, pdf.data.byteOffset, pdf.data.byteLength).toString("base64");
+          return { ...base, kind: "pdf", readStatus: "read", pages, bytes: pdf.bytes, base64 };
         }
         case "text": {
           const text = r.text?.trim() ?? "";

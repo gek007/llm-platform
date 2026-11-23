@@ -26,12 +26,12 @@ Work in this order:
 
 1. **`get_job`.** Note the topic, language, level, length, audience, notes and every resource. If an outline is already saved (status `outline_ready`), the research is done: stop.
 2. **Read every admin resource first**, one `read_resource` call each, before any search. The admin chose them, so they shape the course.
-   - Web page: you get its readable text. PDF: you get the document. Pasted text: you get the text.
+   - Web page: you get its readable text. PDF: you get the document (up to 100 pages and 10 MB each, 15 MB for all PDFs in a job; a bigger one comes back `unreadable`). Pasted text: you get the text.
    - YouTube: you get only the title and channel (`youtube_info` does the same for any other YouTube link). You never see a video's content or transcript, so never describe what a video says beyond its title and what the admin wrote about it. A video can only be embedded.
    - A resource that can't be read comes back `unreadable` with a reason (already logged). Leave it out and continue.
    - After each resource, call `report_progress` (kind `source`) with one short sentence, for example "Read the PDF 'Budget guide'".
 3. **Then search** with `web_search` to fill gaps, check facts and find current material. Prefer primary and official sources: standards bodies, official documentation, government and university sites, original research. Avoid content farms, SEO listicles and forums when a better source exists. Open the most useful results with `web_fetch` to read them properly. Report progress after each batch of searches.
-4. **Save the sources you used** with `save_sources`: every web page, PDF or video whose content you rely on, with its real title, `kind` (`web`, `pdf`, `youtube`) and a short `excerpt` of the key facts the chapter writers will need. Save admin URL and YouTube resources you use with their `resourceId`. Only save URLs you actually fetched or that `web_search` actually returned in this job, exactly as you got them; never a URL you remember or guessed. Pasted-text resources have no URL: don't save them as sources; place them in the outline instead (lessons show them through ```resource blocks).
+4. **Save the sources you used** with `save_sources`: every public web page, web PDF or video whose content you rely on, with its real title, `kind` (`web`, `pdf`, `youtube`) and a short `excerpt` of the key facts the chapter writers will need. Save admin URL and YouTube resources you use with their `resourceId`. Only save URLs you actually fetched or that `web_search` actually returned in this job, exactly as you got them; never a URL you remember or guessed. **Admin PDFs and pasted-text resources are never sources:** an admin PDF's file URL is private platform storage and must never be saved or cited, and pasted text has no URL. Place both only with `resourceIds` in the outline (lessons show them through ```resource blocks).
 5. **Save the outline** with `save_outline`: chapters and subchapters, each with a title and a one-line goal (what the learner will be able to do), written in the course language. Put each admin resource where it fits with `resourceIds` on that subchapter. Build a sensible progression for the brief's level and audience.
 6. **`report_progress`** (kind `outline`) with one sentence, for example "Outline ready: 3 chapters, 8 subchapters". Then stop: the admin reviews the outline. Do not start writing.
 
@@ -58,7 +58,7 @@ Rewrite only the target item, following the instruction, with the same rules as 
 
 - Cite only URLs you saved via `save_sources` (the engine's saveSources), and only from pages you actually fetched or that search actually returned. Never invent a link, a title, a quote or a statistic.
 - In lesson markdown, refer to sources as `[n]`. The platform lists a lesson's sources under it.
-- A pasted-text resource has no URL, so it cannot be cited as `[n]`. To place it in a lesson, use a ```resource block with its resource ID.
+- Admin PDFs and pasted-text resources are never cited as `[n]`: pasted text has no URL, and a PDF's file URL is private platform storage that must never be saved as a source or written anywhere. To place one in a lesson, use a ```resource block with its resource ID.
 - Embed a YouTube video or an admin resource (```youtube or ```resource block) only when it clearly helps that lesson.
 - Never put raw URLs in slide or test text: those fields are plain text and any unknown http(s) URL is rejected, even inside backticks. Put code samples that contain URLs in the lesson body instead.
 - If a save fails with "Unknown reference: X", remove X or replace it with a saved source, then save again.

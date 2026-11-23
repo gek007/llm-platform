@@ -29,6 +29,7 @@ vi.mock("../lib/safe-fetch", async (importOriginal) => {
     ...real,
     fetchText: (url: string, deps: object = {}) => real.fetchText(url, { ...deps, fetch }),
     fetchPdf: (url: string, deps: object = {}) => real.fetchPdf(url, { ...deps, fetch }),
+    fetchPdfSize: (url: string, deps: object = {}) => real.fetchPdfSize(url, { ...deps, fetch }),
     fetchJson: (url: string, deps: object = {}) => fetchJsonMock(url, deps),
   };
 });
@@ -66,6 +67,18 @@ const resource = (r: Partial<JobBrief["resources"][number]> & { id: string; kind
   ...r,
 });
 
+/** A minimal PDF-looking file with `pages` page objects, padded to `size` bytes. */
+function pdfWithPages(pages: number, size = 0): Uint8Array<ArrayBuffer> {
+  const head = `%PDF-1.4\n1 0 obj << /Type /Pages /Count ${pages} >> endobj\n` +
+    Array.from({ length: pages }, (_, i) => `${i + 2} 0 obj << /Type /Page /Parent 1 0 R >> endobj\n`).join("");
+  const bytes = new Uint8Array(Math.max(size, head.length + 6));
+  bytes.set(new TextEncoder().encode(head));
+  bytes.set(new TextEncoder().encode("%%EOF\n"), bytes.length - 6);
+  return bytes;
+}
+const MB = 1024 * 1024;
+const pdfResponse = (body: Uint8Array<ArrayBuffer>) => new Response(body, { headers: { "content-type": "application/pdf" } });
+
 function outline(chapters: number, subchapters: number) {
   return {
     chapters: Array.from({ length: chapters }, (_, c) => ({
@@ -82,7 +95,7 @@ beforeEach(() => {
 });
 
 describe("read_resource", () => {
-  test("a PDF over the 20 MB cap is marked unreadable with a reason", async () => {
+  test("a PDF over the cap is marked unreadable with a reason", async () => {
     engine.getJob.mockResolvedValue(
       job({ resources: [resource({ id: "r1", kind: "pdf", title: "Budget guide", fileUrl: `${PUBLIC}/api/storage/abc` })] }),
     );
@@ -92,10 +105,10 @@ describe("read_resource", () => {
       });
     const out = await run(readResource, { jobId: "job1", resourceId: "r1" });
     expect(out).toMatchObject({ ok: true, readStatus: "unreadable" });
-    expect(out.reason).toMatch(/20 MB/);
+    expect(out.reason).toMatch(/larger than 10 MB/);
     expect(engine.setResourceStatus).toHaveBeenCalledWith({ jobId: "job1", resourceId: "r1", readStatus: "unreadable" });
     expect(engine.reportProgress).toHaveBeenCalledWith(
-      expect.objectContaining({ jobId: "job1", kind: "source", message: expect.stringMatching(/Budget guide.*20 MB/) }),
+      expect.objectContaining({ jobId: "job1", kind: "source", message: expect.stringMatching(/Budget guide.*10 MB/) }),
     );
   });
 
@@ -103,7 +116,7 @@ describe("read_resource", () => {
     engine.getJob.mockResolvedValue(
       job({ resources: [resource({ id: "r1", kind: "pdf", title: "Budget guide", fileUrl: `${PUBLIC}/api/storage/abc` })] }),
     );
-    const pdf = new TextEncoder().encode("%PDF-1.4\n%%EOF\n");
+    const pdf = pdfWithPages(3);
     transport = () => new Response(pdf, { headers: { "content-type": "application/pdf" } });
     const out = await run(readResource, { jobId: "job1", resourceId: "r1" });
     expect(out).toMatchObject({ ok: true, kind: "pdf", readStatus: "read" });
@@ -113,6 +126,57 @@ describe("read_resource", () => {
     const file = model.value.find((p: any) => p.mediaType === "application/pdf");
     expect(file).toBeTruthy();
     expect(JSON.stringify(model)).toContain(out.base64);
+  });
+
+  test("a PDF over the model's page limit is marked unreadable and not attached", async () => {
+    engine.getJob.mockResolvedValue(
+      job({ resources: [resource({ id: "r1", kind: "pdf", title: "Annual report", fileUrl: `${PUBLIC}/api/storage/abc` })] }),
+    );
+    transport = () => pdfResponse(pdfWithPages(120));
+    const out = await run(readResource, { jobId: "job1", resourceId: "r1" });
+    expect(out).toMatchObject({ ok: true, readStatus: "unreadable", reason: "the PDF has 120 pages; the model accepts up to 100" });
+    expect(out.base64).toBeUndefined();
+    const model = readResource.toModelOutput!(out as never) as any;
+    expect(model.type).toBe("json");
+    expect(JSON.stringify(model)).not.toContain("application/pdf");
+    expect(engine.setResourceStatus).toHaveBeenCalledWith({ jobId: "job1", resourceId: "r1", readStatus: "unreadable" });
+  });
+
+  test("a second PDF that would exceed the job's PDF budget is marked unreadable", async () => {
+    engine.getJob.mockResolvedValue(
+      job({
+        resources: [
+          resource({ id: "r1", kind: "pdf", title: "First", fileUrl: `${PUBLIC}/api/storage/one`, readStatus: "read" }),
+          resource({ id: "r2", kind: "pdf", title: "Second", fileUrl: `${PUBLIC}/api/storage/two` }),
+        ],
+      }),
+    );
+    const first = pdfWithPages(10, 9 * MB);
+    const second = pdfWithPages(10, 7 * MB);
+    transport = (url) => pdfResponse(url.endsWith("/one") ? first : second);
+    const out = await run(readResource, { jobId: "job1", resourceId: "r2" });
+    expect(out).toMatchObject({ ok: true, readStatus: "unreadable" });
+    expect(out.reason).toBe("PDFs in this job would exceed 15 MB together (already read: 9 MB, this one: 7 MB)");
+    expect(engine.setResourceStatus).toHaveBeenCalledWith({ jobId: "job1", resourceId: "r2", readStatus: "unreadable" });
+  });
+
+  test("a small second PDF within the job budget is still attached and marked read", async () => {
+    engine.getJob.mockResolvedValue(
+      job({
+        resources: [
+          resource({ id: "r1", kind: "pdf", title: "First", fileUrl: `${PUBLIC}/api/storage/one`, readStatus: "read" }),
+          resource({ id: "r2", kind: "pdf", title: "Second", fileUrl: `${PUBLIC}/api/storage/two` }),
+        ],
+      }),
+    );
+    const first = pdfWithPages(10, 9 * MB);
+    const second = pdfWithPages(4, 1 * MB);
+    transport = (url) => pdfResponse(url.endsWith("/one") ? first : second);
+    const out = await run(readResource, { jobId: "job1", resourceId: "r2" });
+    expect(out).toMatchObject({ ok: true, kind: "pdf", readStatus: "read", pages: 4, bytes: MB });
+    const model = readResource.toModelOutput!(out as never) as any;
+    expect(model.value.some((p: any) => p.mediaType === "application/pdf")).toBe(true);
+    expect(engine.setResourceStatus).toHaveBeenCalledWith({ jobId: "job1", resourceId: "r2", readStatus: "read" });
   });
 
   test("a YouTube resource is marked embed_only with its oEmbed title and channel", async () => {
@@ -188,6 +252,28 @@ describe("read_resource", () => {
   });
 });
 
+describe("save_sources refuses admin file storage URLs", () => {
+  test.each([
+    ["the exact fileUrl", `${PUBLIC}/api/storage/abc`],
+    ["another URL on the storage host", `${PUBLIC}/api/storage/other`],
+    ["a Convex storage path on another deployment", "https://happy-otter-123.convex.cloud/api/storage/0b1c"],
+  ])("%s", async (_label, url) => {
+    engine.getJob.mockResolvedValue(
+      job({ resources: [resource({ id: "r1", kind: "pdf", title: "Budget guide", fileUrl: `${PUBLIC}/api/storage/abc` })] }),
+    );
+    const out = await run(saveSources, {
+      jobId: "job1",
+      sources: [
+        { url: "https://example.org/a", title: "A", kind: "web" },
+        { url, title: "Budget guide", kind: "pdf", resourceId: "r1" },
+      ],
+    });
+    expect(out.ok).toBe(false);
+    expect(out.message).toMatch(/^INVALID: .*private storage URL.*resourceIds/);
+    expect(engine.saveSources).not.toHaveBeenCalled();
+  });
+});
+
 describe("youtube_info", () => {
   test("returns the video ID, title and channel", async () => {
     fetchJsonMock.mockResolvedValue({ title: "Budgeting 101", author_name: "Money Channel" });
@@ -254,6 +340,7 @@ describe("engine errors surface as { ok: false }", () => {
   });
 
   test("save_sources", async () => {
+    engine.getJob.mockResolvedValue(job());
     engine.saveSources.mockRejectedValueOnce(new EngineError("INVALID: source url must be an absolute http(s) URL: x"));
     const out = await run(saveSources, { jobId: "job1", sources: [{ url: "x", title: "X", kind: "web" }] });
     expect(out).toEqual({ ok: false, message: "INVALID: source url must be an absolute http(s) URL: x" });
@@ -275,6 +362,7 @@ describe("happy paths", () => {
   });
 
   test("save_sources returns the saved source IDs", async () => {
+    engine.getJob.mockResolvedValue(job());
     const sources = [{ url: "https://example.org/a", title: "A", kind: "web" }];
     expect(await run(saveSources, { jobId: "job1", sources })).toEqual({
       ok: true,

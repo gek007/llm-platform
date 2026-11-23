@@ -61,6 +61,8 @@ type Request = FetchDeps & {
   timeoutMs: number;
   accept: (contentType: string) => boolean;
   headers?: Record<string, string>;
+  /** Only the size is wanted: trust a Content-Length (and skip the body), else count the bytes. */
+  sizeOnly?: boolean;
 };
 
 const USER_AGENT = "Mozilla/5.0 (compatible; LearnlyCourseBuilder/1.0)";
@@ -68,7 +70,7 @@ const USER_AGENT = "Mozilla/5.0 (compatible; LearnlyCourseBuilder/1.0)";
 async function safeFetch(
   rawUrl: string,
   req: Request,
-): Promise<{ bytes: Uint8Array; contentType: string; charset?: string }> {
+): Promise<{ bytes: Uint8Array; size: number; contentType: string; charset?: string }> {
   // Our own https check first, with a clear message (guarded-fetch checks again on every hop).
   let url: URL;
   try {
@@ -104,9 +106,15 @@ async function safeFetch(
     if (!req.accept(contentType)) {
       throw new SafeFetchError("bad_type", `Unexpected content type "${contentType || "none"}" from ${url.host}`);
     }
-    const length = Number(response.headers.get("content-length"));
+    const lengthHeader = response.headers.get("content-length");
+    const length = lengthHeader === null ? NaN : Number(lengthHeader);
     if (Number.isFinite(length) && length > req.maxBytes) throw tooLarge(req.maxBytes);
-    return { bytes: await readCapped(response, req.maxBytes, signal), contentType, charset };
+    if (req.sizeOnly && Number.isFinite(length) && length >= 0) {
+      await response.body?.cancel().catch(() => {});
+      return { bytes: new Uint8Array(), size: length, contentType, charset };
+    }
+    const bytes = await readCapped(response, req.maxBytes, signal);
+    return { bytes, size: bytes.byteLength, contentType, charset };
   } catch (err) {
     await response.body?.cancel().catch(() => {});
     throw err instanceof SafeFetchError ? err : toSafeFetchError(err, signal);
@@ -193,18 +201,37 @@ function toSafeFetchError(err: unknown, signal: AbortSignal): SafeFetchError {
 
 const PDF_TYPES = new Set(["application/pdf", "application/x-pdf", "application/octet-stream", "binary/octet-stream"]);
 
-/** A PDF (≤ 20 MB, `%PDF` magic bytes) as base64, ready for a model file part. */
-export async function fetchPdf(url: string, deps: FetchDeps = {}): Promise<{ base64: string; bytes: number }> {
+/**
+ * A PDF (≤ `maxBytes`, default and hard cap 20 MB; `%PDF` magic bytes) as raw bytes. The caller
+ * checks pages and budgets before handing it to the model.
+ */
+export async function fetchPdf(
+  url: string,
+  deps: FetchDeps & { maxBytes?: number } = {},
+): Promise<{ data: Uint8Array; bytes: number }> {
   const { bytes } = await safeFetch(url, {
     ...deps,
-    maxBytes: PDF_MAX_BYTES,
+    maxBytes: Math.min(deps.maxBytes ?? PDF_MAX_BYTES, PDF_MAX_BYTES),
     timeoutMs: 90_000,
     accept: (t) => PDF_TYPES.has(t),
     headers: { accept: "application/pdf" },
   });
   const magic = new TextDecoder().decode(bytes.subarray(0, 1024));
   if (!magic.trimStart().startsWith("%PDF-")) throw new SafeFetchError("not_pdf", "The file is not a PDF");
-  return { base64: Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64"), bytes: bytes.byteLength };
+  return { data: bytes, bytes: bytes.byteLength };
+}
+
+/** A PDF's size in bytes (Content-Length when sent, else counted while streaming; ≤ 20 MB). */
+export async function fetchPdfSize(url: string, deps: FetchDeps = {}): Promise<number> {
+  const { size } = await safeFetch(url, {
+    ...deps,
+    maxBytes: PDF_MAX_BYTES,
+    timeoutMs: 60_000,
+    accept: (t) => PDF_TYPES.has(t),
+    headers: { accept: "application/pdf" },
+    sizeOnly: true,
+  });
+  return size;
 }
 
 const TEXT_TYPES = /^(text\/[\w.+-]+|application\/(xhtml\+xml|xml|json|[\w.+-]+\+(xml|json)))$/;

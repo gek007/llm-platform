@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, test, vi } from "vitest";
 import { PDF_MAX_BYTES } from "../../../../convex/lib/engineTypes";
-import { fetchJson, fetchPdf, fetchText, SafeFetchError, TEXT_MAX_BYTES } from "./safe-fetch";
+import { fetchJson, fetchPdf, fetchPdfSize, fetchText, SafeFetchError, TEXT_MAX_BYTES } from "./safe-fetch";
 
 // A public IPv4 literal: guarded-fetch skips DNS for IP literals, so these tests never touch the
 // network. The injected `fetch` stands in for the connection.
@@ -149,11 +149,37 @@ describe("safe fetch: size, type and magic bytes", () => {
     expect(await codeOf(fetchPdf(`${PUBLIC}/doc.pdf`, { fetch }))).toBe("bad_type");
   });
 
-  test("returns a real PDF as base64", async () => {
+  test("returns a real PDF's bytes", async () => {
     const fetch = transport(() => new Response(pdfBytes, { headers: { "content-type": "application/pdf" } }));
     const pdf = await fetchPdf(`${PUBLIC}/doc.pdf`, { fetch });
     expect(pdf.bytes).toBe(pdfBytes.length);
-    expect(Buffer.from(pdf.base64, "base64").toString("utf8")).toBe(new TextDecoder().decode(pdfBytes));
+    expect(new TextDecoder().decode(pdf.data)).toBe(new TextDecoder().decode(pdfBytes));
+  });
+
+  test("a caller's lower PDF cap applies", async () => {
+    const fetch = transport(() => new Response(new Uint8Array(2048), { headers: { "content-type": "application/pdf" } }));
+    expect(await codeOf(fetchPdf(`${PUBLIC}/doc.pdf`, { fetch, maxBytes: 1024 }))).toBe("too_large");
+  });
+
+  test("fetchPdfSize trusts Content-Length, else counts the stream", async () => {
+    const withLength = transport(
+      () => new Response(pdfBytes, { headers: { "content-type": "application/pdf", "content-length": "12345" } }),
+    );
+    expect(await fetchPdfSize(`${PUBLIC}/a.pdf`, { fetch: withLength })).toBe(12345);
+    const chunked = transport(
+      () =>
+        new Response(
+          new ReadableStream({
+            start(c) {
+              c.enqueue(new Uint8Array(700));
+              c.enqueue(new Uint8Array(300));
+              c.close();
+            },
+          }),
+          { headers: { "content-type": "application/pdf" } },
+        ),
+    );
+    expect(await fetchPdfSize(`${PUBLIC}/b.pdf`, { fetch: chunked })).toBe(1000);
   });
 
   test("text accepts HTML and plain text, refuses binaries", async () => {
