@@ -44,6 +44,8 @@ export function JobLiveView({ jobId }: { jobId: string }) {
   }
 
   const step = currentStep(job.status, Boolean(job.outline));
+  // A dispatchError left over from an earlier phase means nothing once the job has moved on.
+  const dispatchFailed = Boolean(job.dispatchError) && (job.status === "researching" || job.status === "writing");
   const chapterEvents = (order: number) => (events ?? []).filter((e) => e.chapterOrder === order).at(-1);
 
   return (
@@ -69,7 +71,7 @@ export function JobLiveView({ jobId }: { jobId: string }) {
         ))}
       </ol>
 
-      {job.dispatchError ? (
+      {dispatchFailed ? (
         <StatusMessage kind="error">The engine could not be reached: {job.dispatchError}</StatusMessage>
       ) : null}
       {job.status === "failed" ? <StatusMessage kind="error">{job.error ?? "The job failed."}</StatusMessage> : null}
@@ -81,13 +83,13 @@ export function JobLiveView({ jobId }: { jobId: string }) {
             Start
           </Button>
         ) : null}
-        {job.dispatchError ? (
+        {dispatchFailed ? (
           <Button disabled={busy} onClick={() => void run("resume")}>
             Resume
           </Button>
         ) : null}
         {job.status === "failed" ? (
-          <Button variant={job.dispatchError ? "secondary" : "primary"} disabled={busy} onClick={() => void run("resume")}>
+          <Button disabled={busy} onClick={() => void run("resume")}>
             Retry phase
           </Button>
         ) : null}

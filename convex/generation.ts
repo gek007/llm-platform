@@ -4,6 +4,7 @@ import { mutation, query } from "./_generated/server";
 import { requireAdmin } from "./lib/auth";
 import {
   PDF_MAX_BYTES,
+  engineCommandValidator,
   languageValidator,
   lengthValidator,
   outlineValidator,
@@ -173,6 +174,7 @@ export const startJob = mutation({
   handler: async (ctx, { jobId }) => {
     await requireAdmin(ctx);
     await transition(ctx, await getJob(ctx, jobId), ["queued"], "researching");
+    await ctx.db.patch(jobId, { pendingCommand: undefined });
   },
 });
 
@@ -187,6 +189,8 @@ export const requestRegenerate = mutation({
     // Published/archived course: BAD_STATE (message: REGENERATE_PUBLISHED_MESSAGE).
     if (course && course.status !== "draft") throw new ConvexError("BAD_STATE");
     await transition(ctx, job, ["ready"], "writing");
+    // The route records the new command next; until then Resume falls back to the status mapping.
+    await ctx.db.patch(jobId, { pendingCommand: undefined });
   },
 });
 
@@ -259,17 +263,32 @@ export const approveOutline = mutation({
       .withIndex("by_job", (q) => q.eq("jobId", jobId))
       .collect();
     for (const r of resources) await ctx.db.patch(r._id, { courseId });
-    await ctx.db.patch(jobId, { courseId });
+    await ctx.db.patch(jobId, { courseId, pendingCommand: undefined });
     return courseId;
   },
 });
 
+/**
+ * Records the command the route is about to dispatch, so Resume re-sends exactly it (a regenerate
+ * whose dispatch failed is retried as that regenerate, not as `write`).
+ */
+export const setPendingCommand = mutation({
+  args: { jobId: v.id("generationJobs"), command: engineCommandValidator },
+  handler: async (ctx, { jobId, command }) => {
+    await requireAdmin(ctx);
+    await getJob(ctx, jobId);
+    if (command.jobId !== jobId) throw new ConvexError("BAD_STATE");
+    await ctx.db.patch(jobId, { pendingCommand: command, updatedAt: Date.now() });
+  },
+});
+
+/** A successful dispatch: saves the session and clears any earlier dispatch error. */
 export const markDispatched = mutation({
   args: { jobId: v.id("generationJobs"), eveSessionId: v.string() },
   handler: async (ctx, { jobId, eveSessionId }) => {
     await requireAdmin(ctx);
     await getJob(ctx, jobId);
-    await ctx.db.patch(jobId, { eveSessionId, updatedAt: Date.now() });
+    await ctx.db.patch(jobId, { eveSessionId, dispatchError: undefined, updatedAt: Date.now() });
   },
 });
 

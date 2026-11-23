@@ -1,6 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
+  engineCommandValidator,
   eventKindValidator,
   jobStatusValidator,
   languageValidator,
@@ -167,6 +168,8 @@ export default defineSchema({
     status: jobStatusValidator,
     eveSessionId: v.optional(v.string()),
     dispatchError: v.optional(v.string()),
+    /** The last command the route dispatched (or tried to); Resume re-sends exactly it. */
+    pendingCommand: v.optional(engineCommandValidator),
     outline: v.optional(outlineValidator),
     courseId: v.optional(v.id("courses")),
     error: v.optional(v.string()),

@@ -113,6 +113,16 @@ describe("JobLiveView", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/course-builder/resume", expect.anything());
   });
 
+  test.each(["ready", "outline_ready", "failed"])(
+    "%s with a stale dispatchError: no engine banner and no Resume",
+    (status) => {
+      setJob({ status, outline, courseId: "course9", dispatchError: "engine down" });
+      render(<JobLiveView jobId="job1" />);
+      expect(screen.queryByText(/engine down/)).toBeNull();
+      expect(resume()).toBeNull();
+    },
+  );
+
   test("a 409 shows the current status and the button re-enables", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: "BAD_STATE", status: "writing" }), { status: 409 }));

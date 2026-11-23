@@ -61,6 +61,7 @@ beforeEach(() => {
   handlers.set("generation:get", () => job);
   handlers.set("generation:markDispatched", () => null);
   handlers.set("generation:markDispatchError", () => null);
+  handlers.set("generation:setPendingCommand", () => null);
   asAdmin();
 });
 
@@ -90,14 +91,21 @@ describe("POST /api/course-builder/[action]", () => {
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 
-  it("start: startJob then dispatch research then markDispatched", async () => {
+  it("start: startJob, record the command, dispatch research, markDispatched", async () => {
     handlers.set("generation:startJob", () => null);
+    const pending = vi.fn(() => null);
+    handlers.set("generation:setPendingCommand", pending);
     const res = await call("start", { jobId: "j1" });
     expect(res.status).toBe(200);
     expect(callLog).toEqual([
       "generation:startJob",
+      "generation:setPendingCommand",
       "generation:markDispatched",
     ]);
+    expect(pending).toHaveBeenCalledWith({
+      jobId: "j1",
+      command: { action: "research", jobId: "j1" },
+    });
     expect(dispatchMock).toHaveBeenCalledWith(
       { action: "research", jobId: "j1" },
       expect.anything(),
@@ -213,7 +221,47 @@ describe("POST /api/course-builder/[action]", () => {
     const res = await call("resume", { jobId: "j1" });
     expect(res.status).toBe(200);
     expect(dispatchMock).toHaveBeenCalledWith(cmd, expect.anything());
-    expect(callLog).toEqual(["generation:get", "generation:markDispatched"]);
+    expect(callLog).toEqual([
+      "generation:get",
+      "generation:setPendingCommand",
+      "generation:markDispatched",
+    ]);
+  });
+
+  it.each(["writing", "failed"])(
+    "resume (%s) re-sends the stored regenerate command, not write",
+    async (status) => {
+      const stored = {
+        action: "regenerate",
+        jobId: "j1",
+        target: { kind: "deck", chapterOrder: 2 },
+        instruction: "more diagrams",
+      };
+      job = { _id: "j1", status, courseId: "c1", pendingCommand: stored };
+      const res = await call("resume", { jobId: "j1" });
+      expect(res.status).toBe(200);
+      expect(dispatchMock).toHaveBeenCalledWith(stored, expect.anything());
+    },
+  );
+
+  it("resume ignores a stored command for another job and still 409s a ready job", async () => {
+    job = {
+      _id: "j1",
+      status: "writing",
+      pendingCommand: { action: "research", jobId: "other" },
+    };
+    await call("resume", { jobId: "j1" });
+    expect(dispatchMock).toHaveBeenLastCalledWith(
+      { action: "write", jobId: "j1" },
+      expect.anything(),
+    );
+    job = {
+      _id: "j1",
+      status: "ready",
+      pendingCommand: { action: "write", jobId: "j1" },
+    };
+    expect((await call("resume", { jobId: "j1" })).status).toBe(409);
+    expect(dispatchMock).toHaveBeenCalledTimes(1);
   });
 
   it("resume of a failed job: write when it has a course, else research", async () => {

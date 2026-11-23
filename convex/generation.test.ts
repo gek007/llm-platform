@@ -70,8 +70,11 @@ describe("requestRegenerate", () => {
   it("draft ready job goes to writing; second call BAD_STATE", async () => {
     const t = makeT();
     const jobId = await readyJob(t, "draft");
+    await asAdmin(t).mutation(api.generation.setPendingCommand, { jobId, command: { action: "write", jobId } });
     await asAdmin(t).mutation(api.generation.requestRegenerate, { jobId });
-    expect((await asAdmin(t).query(api.generation.get, { jobId }))?.status).toBe("writing");
+    const job = await asAdmin(t).query(api.generation.get, { jobId });
+    expect(job?.status).toBe("writing");
+    expect(job?.pendingCommand).toBeUndefined(); // the route records the regenerate next
     await expect(asAdmin(t).mutation(api.generation.requestRegenerate, { jobId })).rejects.toThrow("BAD_STATE");
   });
   it("published course is BAD_STATE and job stays ready", async () => {
@@ -201,6 +204,39 @@ describe("dispatch markers and events", () => {
     expect(ev[0].message).toBe("m51");
     expect(ev[198].message).toBe("m249");
     expect(ev[199].kind).toBe("error"); // the dispatch-error event is the newest
+  });
+
+  it("markDispatched clears an earlier dispatchError", async () => {
+    const t = makeT();
+    const a = asAdmin(t);
+    const jobId = await a.mutation(api.generation.createJob, jobArgs);
+    await a.mutation(api.generation.markDispatchError, { jobId, error: "boom" });
+    await a.mutation(api.generation.markDispatched, { jobId, eveSessionId: "s2" });
+    const job = await a.query(api.generation.get, { jobId });
+    expect(job?.eveSessionId).toBe("s2");
+    expect(job?.dispatchError).toBeUndefined();
+  });
+
+  it("setPendingCommand stores the command; admin only; jobId must match", async () => {
+    const t = makeT();
+    const a = asAdmin(t);
+    const jobId = await a.mutation(api.generation.createJob, jobArgs);
+    const command = {
+      action: "regenerate" as const,
+      jobId,
+      target: { kind: "subchapter" as const, chapterOrder: 2, subchapterOrder: 1 },
+      instruction: "simpler",
+    };
+    await a.mutation(api.generation.setPendingCommand, { jobId, command });
+    expect((await a.query(api.generation.get, { jobId }))?.pendingCommand).toEqual(command);
+    await a.mutation(api.generation.setPendingCommand, { jobId, command: { action: "write", jobId } });
+    expect((await a.query(api.generation.get, { jobId }))?.pendingCommand).toEqual({ action: "write", jobId });
+    await expect(
+      asUser(t).mutation(api.generation.setPendingCommand, { jobId, command: { action: "write", jobId } }),
+    ).rejects.toThrow("FORBIDDEN");
+    await expect(
+      a.mutation(api.generation.setPendingCommand, { jobId, command: { action: "write", jobId: "other" } }),
+    ).rejects.toThrow("BAD_STATE");
   });
 });
 

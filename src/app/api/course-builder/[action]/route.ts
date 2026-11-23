@@ -9,6 +9,7 @@ import { dispatch } from "@/lib/course-builder/dispatch";
 
 /**
  * `POST /api/course-builder/<start|approve|regenerate|resume>` with `{ jobId, ...}`. Admin only.
+ * The command is stored on the job (`pendingCommand`) before dispatch; `resume` re-sends it.
  * Each action makes its Convex transition (as the caller, with their Clerk token) and then
  * dispatches exactly one command to the engine, so a double click gets one transition and one
  * dispatch: the second call hits BAD_STATE and answers 409 with the job's current status.
@@ -81,6 +82,7 @@ export async function POST(
       status: string;
       courseId?: string;
       eveSessionId?: string;
+      pendingCommand?: unknown;
     } | null;
 
   let sessionId: string | undefined;
@@ -98,11 +100,15 @@ export async function POST(
       const job = await current();
       if (!job) return json(404, { error: "NOT_FOUND" });
       sessionId = job.eveSessionId;
-      if (job.status === "researching") cmd = { action: "research", jobId };
+      if (!["researching", "writing", "failed"].includes(job.status))
+        return json(409, { error: "BAD_STATE", status: job.status });
+      // Re-send exactly the command the last dispatch carried (a failed regenerate stays a
+      // regenerate); fall back to the status mapping for jobs dispatched before it was recorded.
+      const stored = toCommand(job.pendingCommand);
+      if (stored && stored.jobId === jobId) cmd = stored;
+      else if (job.status === "researching") cmd = { action: "research", jobId };
       else if (job.status === "writing") cmd = { action: "write", jobId };
-      else if (job.status === "failed")
-        cmd = { action: job.courseId ? "write" : "research", jobId };
-      else return json(409, { error: "BAD_STATE", status: job.status });
+      else cmd = { action: job.courseId ? "write" : "research", jobId };
     }
   } catch (err) {
     const code = errorCode(err);
@@ -131,6 +137,8 @@ export async function POST(
   }
 
   try {
+    // Recorded before dispatch so Resume can re-send it if the dispatch fails.
+    await convex.mutation(api.generation.setPendingCommand, { jobId: id, command: cmd! });
     const result = await dispatch(cmd!, { sessionId });
     await convex.mutation(api.generation.markDispatched, {
       jobId: id,

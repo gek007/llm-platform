@@ -80,6 +80,26 @@ export const eventKindValidator = v.union(
   v.literal("error"),
 );
 
+/**
+ * The command the dispatcher sends to the course-builder agent, as stored on the job
+ * (`generationJobs.pendingCommand`). Mirrors `EngineCommand` in src/lib/course-builder/commands.ts.
+ */
+export const regenerateTargetValidator = v.object({
+  kind: v.union(v.literal("subchapter"), v.literal("deck"), v.literal("test"), v.literal("chapter")),
+  chapterOrder: v.number(),
+  subchapterOrder: v.optional(v.number()),
+});
+export const engineCommandValidator = v.union(
+  v.object({ action: v.literal("research"), jobId: v.string() }),
+  v.object({ action: v.literal("write"), jobId: v.string() }),
+  v.object({
+    action: v.literal("regenerate"),
+    jobId: v.string(),
+    target: regenerateTargetValidator,
+    instruction: v.string(),
+  }),
+);
+
 export type Language = Infer<typeof languageValidator>;
 export type Length = Infer<typeof lengthValidator>;
 export type Slide = Infer<typeof slideValidator>;
@@ -92,6 +112,7 @@ export type ResourceKind = Infer<typeof resourceKindValidator>;
 export type ReadStatus = Infer<typeof readStatusValidator>;
 export type SourceKind = Infer<typeof sourceKindValidator>;
 export type EventKind = Infer<typeof eventKindValidator>;
+export type StoredEngineCommand = Infer<typeof engineCommandValidator>;
 
 /**
  * What `engine.getJob` returns (and `/engine/getJob` sends, minus `ok`): everything the
