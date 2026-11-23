@@ -20,6 +20,22 @@ export function canAccessLesson(args: {
   return signedIn && pro;
 }
 
+/**
+ * Pure access rule for a course's chaptered content (slide decks, chapter tests, chapter pages).
+ * Admin: everything. Free course: any signed-in user. Pro course: Pro members only.
+ */
+export function canAccessCourseContent(args: {
+  course: AccessCourse;
+  signedIn: boolean;
+  pro: boolean;
+  admin: boolean;
+}): boolean {
+  const { course, signedIn, pro, admin } = args;
+  if (admin) return true;
+  if (course.tier === "free") return signedIn;
+  return signedIn && pro;
+}
+
 export type PlaybackLesson = AccessLesson & {
   muxPlaybackId?: string;
   videoStatus?: "waiting" | "processing" | "ready" | "errored";

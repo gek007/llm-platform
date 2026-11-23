@@ -41,8 +41,36 @@ export const getBySlug = query({
       .query("lessons")
       .withIndex("by_course_order", (q) => q.eq("courseId", course._id))
       .collect();
+    const chapterRows = await ctx.db
+      .query("chapters")
+      .withIndex("by_course_order", (q) => q.eq("courseId", course._id))
+      .collect();
+    const chapters = await Promise.all(
+      chapterRows.map(async (chapter) => {
+        const deck = await ctx.db
+          .query("slideDecks")
+          .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
+          .first();
+        const test = await ctx.db
+          .query("chapterTests")
+          .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
+          .first();
+        return {
+          _id: chapter._id,
+          slug: chapter.slug,
+          title: chapter.title,
+          summary: chapter.summary,
+          order: chapter.order,
+          lessonIds: lessons.filter((l) => l.chapterId === chapter._id).map((l) => l._id),
+          hasDeck: deck !== null,
+          test: test ? { _id: test._id, questionCount: test.questions.length } : null,
+        };
+      }),
+    );
     return {
       ...course,
+      language: course.language ?? "en",
+      chapters,
       lessons: lessons.map((lesson) => ({
         _id: lesson._id,
         slug: lesson.slug,

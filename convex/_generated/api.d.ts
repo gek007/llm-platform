@@ -9,6 +9,7 @@
  */
 
 import type * as admin from "../admin.js";
+import type * as chapters from "../chapters.js";
 import type * as courses from "../courses.js";
 import type * as enrollments from "../enrollments.js";
 import type * as http from "../http.js";
@@ -16,6 +17,7 @@ import type * as lessons from "../lessons.js";
 import type * as lib_access from "../lib/access.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_engineTypes from "../lib/engineTypes.js";
+import type * as lib_grading from "../lib/grading.js";
 import type * as lib_seedData from "../lib/seedData.js";
 import type * as mux from "../mux.js";
 import type * as muxData from "../muxData.js";
@@ -34,6 +36,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
+  chapters: typeof chapters;
   courses: typeof courses;
   enrollments: typeof enrollments;
   http: typeof http;
@@ -41,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   "lib/access": typeof lib_access;
   "lib/auth": typeof lib_auth;
   "lib/engineTypes": typeof lib_engineTypes;
+  "lib/grading": typeof lib_grading;
   "lib/seedData": typeof lib_seedData;
   mux: typeof mux;
   muxData: typeof muxData;

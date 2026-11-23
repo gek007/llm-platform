@@ -41,8 +41,17 @@ export const getForViewer = query({
             locked: !canAccessLesson({ course, lesson: l, ...viewer }),
           }
         : null;
+    const chapterRow = lesson.chapterId ? await ctx.db.get(lesson.chapterId) : null;
+    const sources = locked
+      ? []
+      : (await Promise.all((lesson.sourceIds ?? []).map((id) => ctx.db.get(id))))
+          .filter((s) => s !== null)
+          .map((s) => ({ title: s.title, url: s.url, kind: s.kind }));
     return {
       course,
+      language: course.language ?? "en",
+      chapter: chapterRow ? { slug: chapterRow.slug, title: chapterRow.title } : null,
+      sources,
       lesson: publicLesson,
       locked,
       prev: ref(all[index - 1]),
