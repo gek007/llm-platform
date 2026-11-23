@@ -14,6 +14,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     ".agents/**",
     "**/.eve/**",
+    "**/.eve-dispatch/**",
     "**/.output/**",
     "**/.workflow-data/**",
     "convex/_generated/**",
