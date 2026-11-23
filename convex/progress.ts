@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { canAccessLesson } from "./lib/access";
 import { ensureEnrolled } from "./lib/enrollment";
+import { completionFor } from "./lib/completion";
 import { getIdentity, getViewerState, requireUser } from "./lib/auth";
 
 export const setComplete = mutation({
@@ -53,5 +54,18 @@ export const forCourse = query({
       )
       .collect();
     return rows.map((r) => r.lessonId);
+  },
+});
+
+export const courseCompletion = query({
+  args: { courseId: v.id("courses") },
+  handler: async (ctx, { courseId }) => {
+    const identity = await getIdentity(ctx);
+    if (!identity) {
+      return { lessonsDone: 0, lessonCount: 0, testsPassed: 0, testCount: 0, complete: false };
+    }
+    const { lessonsDone, lessonCount, testsPassed, testCount, complete } =
+      await completionFor(ctx, identity.subject, courseId);
+    return { lessonsDone, lessonCount, testsPassed, testCount, complete };
   },
 });
