@@ -1,5 +1,17 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import {
+  eventKindValidator,
+  jobStatusValidator,
+  languageValidator,
+  lengthValidator,
+  outlineValidator,
+  questionValidator,
+  readStatusValidator,
+  resourceKindValidator,
+  slideValidator,
+  sourceKindValidator,
+} from "./lib/engineTypes";
 
 export const levelValidator = v.union(
   v.literal("beginner"),
@@ -40,6 +52,8 @@ export default defineSchema({
     outcomes: v.array(v.string()),
     coverImageUrl: v.optional(v.string()),
     order: v.number(),
+    language: v.optional(languageValidator),
+    generationJobId: v.optional(v.id("generationJobs")),
   })
     .index("by_slug", ["slug"])
     .index("by_status_order", ["status", "order"]),
@@ -57,9 +71,12 @@ export default defineSchema({
     muxAssetId: v.optional(v.string()),
     muxPlaybackId: v.optional(v.string()),
     videoStatus: v.optional(videoStatusValidator),
+    chapterId: v.optional(v.id("chapters")),
+    sourceIds: v.optional(v.array(v.id("generationSources"))),
   })
     .index("by_course_order", ["courseId", "order"])
     .index("by_course_slug", ["courseId", "slug"])
+    .index("by_chapter_order", ["chapterId", "order"])
     .index("by_muxAssetId", ["muxAssetId"])
     .index("by_muxUploadId", ["muxUploadId"]),
 
@@ -82,4 +99,105 @@ export default defineSchema({
     .index("by_user_lesson", ["userId", "lessonId"])
     .index("by_course", ["courseId"])
     .index("by_lesson", ["lessonId"]),
+
+  chapters: defineTable({
+    courseId: v.id("courses"),
+    slug: v.string(),
+    title: v.string(),
+    summary: v.string(),
+    order: v.number(),
+  })
+    .index("by_course_order", ["courseId", "order"])
+    .index("by_course_slug", ["courseId", "slug"]),
+
+  slideDecks: defineTable({
+    courseId: v.id("courses"),
+    chapterId: v.id("chapters"),
+    slides: v.array(slideValidator),
+    updatedAt: v.number(),
+  }).index("by_chapter", ["chapterId"]),
+
+  chapterTests: defineTable({
+    courseId: v.id("courses"),
+    chapterId: v.id("chapters"),
+    version: v.number(),
+    passPercent: v.number(),
+    maxAttempts: v.number(),
+    questions: v.array(questionValidator),
+  })
+    .index("by_chapter", ["chapterId"])
+    .index("by_course", ["courseId"]),
+
+  testAttempts: defineTable({
+    userId: v.string(),
+    courseId: v.id("courses"),
+    testId: v.id("chapterTests"),
+    testVersion: v.number(),
+    answers: v.array(v.array(v.number())),
+    scorePercent: v.number(),
+    passed: v.boolean(),
+    submittedAt: v.number(),
+  })
+    .index("by_user_test", ["userId", "testId"])
+    .index("by_test", ["testId"])
+    .index("by_user_course", ["userId", "courseId"]),
+
+  courseResources: defineTable({
+    jobId: v.id("generationJobs"),
+    courseId: v.optional(v.id("courses")),
+    kind: resourceKindValidator,
+    title: v.string(),
+    url: v.optional(v.string()),
+    storageId: v.optional(v.id("_storage")),
+    text: v.optional(v.string()),
+    origin: v.union(v.literal("admin"), v.literal("engine")),
+    readStatus: readStatusValidator,
+  })
+    .index("by_job", ["jobId"])
+    .index("by_course", ["courseId"]),
+
+  generationJobs: defineTable({
+    createdBy: v.string(),
+    topic: v.string(),
+    language: languageValidator,
+    level: levelValidator,
+    length: lengthValidator,
+    audience: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    status: jobStatusValidator,
+    eveSessionId: v.optional(v.string()),
+    dispatchError: v.optional(v.string()),
+    outline: v.optional(outlineValidator),
+    courseId: v.optional(v.id("courses")),
+    error: v.optional(v.string()),
+    usage: v.optional(
+      v.object({
+        inputTokens: v.optional(v.number()),
+        outputTokens: v.optional(v.number()),
+      }),
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status", ["status"])
+    .index("by_createdAt", ["createdAt"]),
+
+  generationEvents: defineTable({
+    jobId: v.id("generationJobs"),
+    at: v.number(),
+    kind: eventKindValidator,
+    message: v.string(),
+    chapterOrder: v.optional(v.number()),
+  }).index("by_job_at", ["jobId", "at"]),
+
+  generationSources: defineTable({
+    jobId: v.id("generationJobs"),
+    url: v.string(),
+    title: v.string(),
+    kind: sourceKindValidator,
+    resourceId: v.optional(v.id("courseResources")),
+    excerpt: v.optional(v.string()),
+  })
+    .index("by_job", ["jobId"])
+    .index("by_job_url", ["jobId", "url"]),
 });

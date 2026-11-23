@@ -15,6 +15,7 @@ import type * as http from "../http.js";
 import type * as lessons from "../lessons.js";
 import type * as lib_access from "../lib/access.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_engineTypes from "../lib/engineTypes.js";
 import type * as lib_seedData from "../lib/seedData.js";
 import type * as mux from "../mux.js";
 import type * as muxData from "../muxData.js";
@@ -39,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   lessons: typeof lessons;
   "lib/access": typeof lib_access;
   "lib/auth": typeof lib_auth;
+  "lib/engineTypes": typeof lib_engineTypes;
   "lib/seedData": typeof lib_seedData;
   mux: typeof mux;
   muxData: typeof muxData;
