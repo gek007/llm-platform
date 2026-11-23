@@ -68,4 +68,14 @@ describe("LessonPlayer", () => {
     await userEvent.setup().click(toggle);
     expect(screen.getByRole("button", { name: "Hide lessons" })).toHaveAttribute("aria-expanded", "true");
   });
+
+  test("tolerates an older backend that returns no sources or language", () => {
+    const { sources: _sources, language: _language, ...legacy } = data({ locked: false });
+    const { container } = render(
+      <LessonPlayer data={legacy as unknown as LessonData} outline={outline} completedIds={[]} signedIn />,
+    );
+    expect(screen.getByRole("heading", { name: "Secret body" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /sources/i })).toBeNull();
+    expect(container.querySelector('[dir="rtl"]')).toBeNull();
+  });
 });

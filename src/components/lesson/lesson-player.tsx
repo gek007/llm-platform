@@ -23,7 +23,9 @@ type Props = {
 };
 
 export function LessonPlayer({ data, outline, completedIds, signedIn }: Props) {
-  const { course, lesson, locked, prev, next, language, sources } = data;
+  // A deployment that predates the course engine returns no `language` or `sources`;
+  // default both so the page still renders against an older backend.
+  const { course, lesson, locked, prev, next, language = "en", sources = [] } = data;
   const returnTo = `/courses/${course.slug}/lessons/${lesson.slug}`;
   const completed = completedIds.includes(lesson._id);
   const body = "body" in lesson ? lesson.body : undefined;

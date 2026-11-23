@@ -132,6 +132,15 @@ Environment variables on Vercel (`vercel env ls`):
 
 Deployments normally come from Git pushes. `vercel deploy` from this folder creates a preview deployment from the working tree, or a production one with `--prod`. `.vercelignore` keeps CLI uploads to what's in Git; Vercel never uploads `.env.local`, `.vercel/`, `.next/` or `node_modules/`.
 
+### Merging and deploying course-engine
+
+The `feat/course-engine` branch changes both `convex/` and the Next.js app, and a Git push deploys only the app. So:
+
+1. **Push `convex/` before (or together with) `main`.** Before, or at the same time as, pushing `main` to GitHub/Vercel, the owner pushes `convex/` to the Convex deployment production reads (today `hallowed-iguana-534`; `tremendous-firefly-113` after the prod cutover above). The schema change is additive (new tables, new optional fields), so existing documents stay valid. The lesson page tolerates a deployment that predates the branch (`LessonPlayer` defaults missing `sources` and `language`), but the chapter, test, admin and generator pages need the new functions.
+2. **Seeding is optional.** `npx convex run seed:run` is idempotent; it adds and publishes the free Hebrew demo course `digital-safety-basics` with its chapters, decks and tests.
+3. **Engine secrets only where the engine should run.** `COURSE_ENGINE_SECRET` (Convex deployment and app environment) and `COURSE_BUILDER_CHANNEL_SECRET` / `COURSE_BUILDER_URL` / `COURSE_ENGINE_MODE` (app environment) are needed only if course generation should run against that deployment. Without them the rest of the site works and `/engine/*` fails closed.
+4. **e2e on `main`.** `npm run test:e2e` on `main` needs the deployment in `.env.local` pushed and seeded: `e2e/chapters.spec.ts` opens `digital-safety-basics`.
+
 ## Environment
 
 | Resource | Name / ID | Dashboard |
