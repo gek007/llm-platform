@@ -155,6 +155,18 @@ export const events = query({
   },
 });
 
+/** Sources the agent saved for a job (admin live view). */
+export const sources = query({
+  args: { jobId: v.id("generationJobs") },
+  handler: async (ctx, { jobId }) => {
+    await requireAdmin(ctx);
+    return await ctx.db
+      .query("generationSources")
+      .withIndex("by_job", (q) => q.eq("jobId", jobId))
+      .take(200);
+  },
+});
+
 /** queued -> researching. A double-clicked Generate yields one transition; the second call is BAD_STATE. */
 export const startJob = mutation({
   args: { jobId: v.id("generationJobs") },

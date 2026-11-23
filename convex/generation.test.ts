@@ -203,3 +203,18 @@ describe("dispatch markers and events", () => {
     expect(ev[199].kind).toBe("error"); // the dispatch-error event is the newest
   });
 });
+
+describe("sources", () => {
+  it("admin lists a job's sources; non-admin is FORBIDDEN", async () => {
+    const t = makeT();
+    const a = asAdmin(t);
+    const jobId = await a.mutation(api.generation.createJob, jobArgs);
+    await t.run((ctx) =>
+      ctx.db.insert("generationSources", { jobId, url: "https://a.dev/x", title: "A", kind: "web" }),
+    );
+    const list = await a.query(api.generation.sources, { jobId });
+    expect(list).toHaveLength(1);
+    expect(list[0].url).toBe("https://a.dev/x");
+    await expect(asUser(t).query(api.generation.sources, { jobId })).rejects.toThrow("FORBIDDEN");
+  });
+});

@@ -24,6 +24,11 @@ const messages: Record<string, string> = {
   INVALID_DURATION: "Duration must be zero or more minutes.",
   INVALID_REORDER: "The lesson list changed; reload and try again.",
   MUX_NOT_CONFIGURED: "Mux credentials are not configured on the Convex deployment.",
+  BAD_STATE: "The job is no longer in a state that allows this. The page shows its current status.",
+  INVALID_TOPIC: "Enter a topic (3 to 200 characters).",
+  INVALID_OUTLINE: "The outline is invalid: every chapter needs a title, a goal and at least one subchapter (max 10 chapters, 5 subchapters each).",
+  INVALID_RESOURCE: "That resource is not valid.",
+  PDF_TOO_LARGE: "The PDF is larger than 20 MB.",
   MUX_UPLOAD_FAILED: "Mux did not return an upload URL.",
 };
 
