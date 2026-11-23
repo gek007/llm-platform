@@ -89,4 +89,14 @@ describe("LessonMarkdown", () => {
     const { container } = render(<LessonMarkdown source="hi" />);
     expect(container.firstElementChild).not.toHaveAttribute("dir");
   });
+
+  test("in he, only real code blocks are forced LTR", () => {
+    const md = [
+      '```quiz\n{ "question": "Q?", "options": ["A", "B"], "answer": 0 }\n```',
+      "```ts\nconst x = 1;\n```",
+    ].join("\n\n");
+    render(<LessonMarkdown source={md} language="he" />);
+    expect(screen.getByRole("radiogroup", { name: "Q?" }).closest('[dir="ltr"]')).toBeNull();
+    expect(document.querySelector("pre")?.closest('[dir="ltr"]')).not.toBeNull();
+  });
 });

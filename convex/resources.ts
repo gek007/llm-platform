@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { isSafeHttpUrl } from "../src/components/markdown/embeds";
 import { query } from "./_generated/server";
 import { canAccessCourseContent } from "./lib/access";
 import { getViewerState } from "./lib/auth";
@@ -33,7 +34,7 @@ export const getForViewer = query({
     } else if (resource.kind === "url" || resource.kind === "youtube") {
       url = resource.url ?? null;
     }
-    if (!url) return null;
+    if (!url || !isSafeHttpUrl(url)) return null;
     return { title: resource.title, kind: resource.kind, url };
   },
 });

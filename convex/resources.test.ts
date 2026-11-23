@@ -90,4 +90,13 @@ describe("resources.getForViewer", () => {
     const t = makeT();
     expect(await asUser(t).query(api.resources.getForViewer, { resourceId: "nonsense" })).toBeNull();
   });
+
+  it("returns null for non-http(s) urls", async () => {
+    const t = makeT();
+    const { link } = await seed(t, { status: "published" });
+    await t.run(async (ctx) => {
+      await ctx.db.patch(link, { url: "javascript:alert(1)" });
+    });
+    expect(await asUser(t).query(api.resources.getForViewer, { resourceId: link })).toBeNull();
+  });
 });

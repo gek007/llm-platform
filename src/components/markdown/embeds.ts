@@ -49,3 +49,13 @@ export function parseResourceBlock(json: string): ParsedResource {
     ? { ok: true, resourceId: result.data.resourceId }
     : { ok: false, error: describeIssue(result.error) };
 }
+
+/** True only for absolute http(s) URLs; rejects javascript:, data:, etc. */
+export function isSafeHttpUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}

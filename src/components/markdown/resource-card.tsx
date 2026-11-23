@@ -2,6 +2,7 @@
 
 import { useQuery } from "convex/react";
 import { Button } from "@/components/ui/button";
+import { isSafeHttpUrl } from "./embeds";
 import { api } from "../../../convex/_generated/api";
 
 const KIND_LABEL: Record<string, string> = { pdf: "PDF", url: "Link", youtube: "Video", text: "Text" };
@@ -15,7 +16,7 @@ export function ResourceCard({ resourceId }: { resourceId: string }) {
       <div role="status" aria-busy="true" className="not-prose my-6 h-16 animate-pulse rounded-xl border border-line bg-surface-2" />
     );
   }
-  if (resource === null) {
+  if (resource === null || !isSafeHttpUrl(resource.url)) {
     return (
       <div role="status" className="not-prose my-6 rounded-xl border border-line bg-surface-2 p-4 text-sm text-muted">
         This resource is not available.

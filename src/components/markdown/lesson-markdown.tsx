@@ -44,7 +44,7 @@ const shiftedHeadings = Object.fromEntries(
   }),
 ) as Components;
 
-function Pre({ children }: ComponentProps<"pre">) {
+function Pre({ children, rtl }: ComponentProps<"pre"> & { rtl?: boolean }) {
   const child = Array.isArray(children) ? children[0] : children;
   if (!isValidElement(child)) return <pre>{children}</pre>;
   const code = child as ReactElement<{ className?: string; children?: ReactNode }>;
@@ -63,11 +63,12 @@ function Pre({ children }: ComponentProps<"pre">) {
     const parsed = parseResourceBlock(text);
     return parsed.ok ? <ResourceCard resourceId={parsed.resourceId} /> : <BlockError kind="resource" message={parsed.error} />;
   }
-  return (
+  const block = (
     <CodeBlock code={text} language={language}>
       {code.props.children}
     </CodeBlock>
   );
+  return rtl ? <div dir="ltr">{block}</div> : block;
 }
 
 const components: Components = {
@@ -99,11 +100,10 @@ const rtlComponents: Components = {
     void node;
     return <li dir="auto" {...props} />;
   },
-  pre: (props) => (
-    <div dir="ltr">
-      <Pre {...props} />
-    </div>
-  ),
+  pre: ({ node, ...props }) => {
+    void node;
+    return <Pre rtl {...props} />;
+  },
 };
 
 /**

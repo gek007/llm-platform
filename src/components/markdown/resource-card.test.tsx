@@ -26,6 +26,11 @@ describe("ResourceCard", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/not available/i);
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
+  test("renders no anchor for a non-http url", () => {
+    result = { title: "Bad", kind: "url", url: "javascript:alert(1)" };
+    render(<ResourceCard resourceId="r1" />);
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
   test("an agent can find the resource link", () => {
     result = { title: "Cheat sheet", kind: "url", url: "https://example.com/x" };
     const agent = createAgent();
