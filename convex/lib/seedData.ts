@@ -566,3 +566,4 @@ Keep the rule in one pure function, and unit-test it.
     ],
   },
 ];
+export { seedChapteredCourses, type SeedChapteredCourse } from "./seedChapteredData";

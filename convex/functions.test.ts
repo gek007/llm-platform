@@ -4,6 +4,8 @@ import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
+import { validateQuestion } from "./lib/grading";
+import { seedChapteredCourses } from "./lib/seedChapteredData";
 
 const modules = import.meta.glob(["./**/*.{ts,js}", "!./**/*.test.ts", "!./**/*.d.ts"]);
 
@@ -29,6 +31,78 @@ describe("seed + catalog", () => {
     expect(pro.lessonCount).toBeGreaterThan(0);
     expect(pro.previewCount).toBeGreaterThan(0);
     expect(pro.durationMinutes).toBeGreaterThan(0);
+  });
+});
+
+describe("seed chaptered course", () => {
+  it("seeds the Hebrew course idempotently with chapters, decks and tests", async () => {
+    const t = makeT();
+    await t.mutation(internal.seed.run, {});
+    await t.mutation(internal.seed.run, {});
+    await t.run(async (ctx) => {
+      const course = await ctx.db
+        .query("courses")
+        .withIndex("by_slug", (q) => q.eq("slug", "digital-safety-basics"))
+        .unique();
+      expect(course).toMatchObject({ language: "he", tier: "free", status: "published" });
+      const chapters = await ctx.db
+        .query("chapters")
+        .withIndex("by_course_order", (q) => q.eq("courseId", course!._id))
+        .collect();
+      expect(chapters.map((c) => c.slug)).toEqual(["chapter-1", "chapter-2"]);
+      const lessons = await ctx.db
+        .query("lessons")
+        .withIndex("by_course_order", (q) => q.eq("courseId", course!._id))
+        .collect();
+      expect(lessons.map((l) => l.order)).toEqual([1, 2, 3, 4]);
+      expect(lessons.map((l) => l.chapterId)).toEqual([
+        chapters[0]._id,
+        chapters[0]._id,
+        chapters[1]._id,
+        chapters[1]._id,
+      ]);
+      for (const chapter of chapters) {
+        const decks = await ctx.db
+          .query("slideDecks")
+          .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
+          .collect();
+        expect(decks).toHaveLength(1);
+        expect(decks[0].slides).toHaveLength(6);
+        const tests = await ctx.db
+          .query("chapterTests")
+          .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
+          .collect();
+        expect(tests).toHaveLength(1);
+        expect(tests[0]).toMatchObject({ version: 1, passPercent: 70, maxAttempts: 3 });
+        expect(tests[0].questions).toHaveLength(4);
+      }
+    });
+  });
+
+  it("keeps the test version when re-seeding", async () => {
+    const t = makeT();
+    await t.mutation(internal.seed.run, {});
+    await t.run(async (ctx) => {
+      const test = (await ctx.db.query("chapterTests").first())!;
+      await ctx.db.patch(test._id, { version: 5 });
+    });
+    await t.mutation(internal.seed.run, {});
+    await t.run(async (ctx) => {
+      const versions = (await ctx.db.query("chapterTests").collect()).map((x) => x.version).sort();
+      expect(versions).toEqual([1, 5]);
+    });
+  });
+
+  it("has only well-formed seed questions and a youtube and quiz block", () => {
+    for (const course of seedChapteredCourses) {
+      const bodies = course.chapters.flatMap((c) => c.lessons.map((l) => l.body)).join("\n");
+      expect(bodies).toContain("```youtube");
+      expect(bodies).toContain("```quiz");
+      for (const chapter of course.chapters) {
+        expect(chapter.slides).toHaveLength(6);
+        for (const q of chapter.test.questions) expect(validateQuestion(q)).toBeNull();
+      }
+    }
   });
 });
 
