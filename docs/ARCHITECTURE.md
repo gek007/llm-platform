@@ -17,7 +17,7 @@ Living document. Update it whenever a step changes the stack, structure, or tool
 | 8 | LMS features ([design](superpowers/specs/2026-11-21-lms-features-design.md)): Clerk + Convex in the app, schema and seed, landing and custom pricing (Clerk Billing), course catalog, lesson player (Mux, markdown, quizzes, progress), dashboard, admin panel with Mux uploads, Pro-only AI tutor widget with Clerk-verified auth | Done | `3d802b1` |
 | 9 | Full-page LMS knowledge-graph backdrop on `/`, clickable Mux preview video in `HeroDemo`, custom signed Mux videos for TypeScript Foundations lessons 1–2, Vercel Production deployment | Done | `e507a09` |
 | 10 | Hands-on labs POC on E2B ([design](superpowers/specs/2026-11-23-labs-poc-design.md)): lab image with terminal (ttyd) and VS Code (code-server), `LabProvider` (E2B, Docker, fake), lab sessions and exercise checks in Convex, lab page | Planned | — |
-| 11 | Course engine demo ([design](superpowers/specs/2026-11-23-course-engine-design.md)): `course-builder` eve agent generates a course from a topic and resources (URL, PDF, YouTube embed, text) in English, Hebrew or Russian; chapters/subchapters, slide decks, practice quizzes, recorded chapter tests, sources; outline approval, live progress, admin review and results | In progress (learner side done: chapters, decks, tests, completion; admin generation shell pending) | — |
+| 11 | Course engine demo ([design](superpowers/specs/2026-11-23-course-engine-design.md)): `course-builder` eve agent generates a course from a topic and resources (URL, PDF, YouTube embed, text) in English, Hebrew or Russian; chapters/subchapters, slide decks, practice quizzes, recorded chapter tests, sources; outline approval, live progress, admin review and results | In progress (learner side and admin generation UI done: chapters, decks, tests, completion, wizard, live view, outline editor, engine API, fake engine; the `course-builder` agent is pending) | — |
 
 Production (<https://llm-platform-xi.vercel.app>) runs the full Learnly LMS app (backed by the Clerk dev instance and Convex dev deployment `hallowed-iguana-534` until a custom domain and Convex prod deploy key are configured). Each area has a reference page in `docs/features/`:
 
@@ -26,7 +26,7 @@ Production (<https://llm-platform-xi.vercel.app>) runs the full Learnly LMS app 
 | Foundation | [foundation.md](features/foundation.md) | Providers, `src/proxy.ts`, Convex schema/API/seed, claims, header/footer, markdown + quiz renderer, theme |
 | Landing and pricing | [landing.md](features/landing.md) | `/`, `/pricing`, Pro plan ID lookup, `CheckoutButton` states |
 | Courses | [course.md](features/course.md) | `/courses`, `/courses/[slug]`, lesson player, `/dashboard` |
-| Course engine | [course-engine.md](features/course-engine.md) | Chaptered courses: chapter page, slide deck, chapter tests, completion rule, RTL, `digital-safety-basics` seed |
+| Course engine | [course-engine.md](features/course-engine.md) | Chaptered courses: chapter page, slide deck, chapter tests, completion rule, RTL, `digital-safety-basics` seed; admin generation (wizard, live view, outline approval, engine API, watchdog) |
 | Admin | [admin.md](features/admin.md) | `/admin/**`, `convex/admin.ts`, Mux upload/sync/webhook |
 | AI tutor | [tutor.md](features/tutor.md) | `agents/learnly/`, `src/components/tutor/`, Clerk auth on the agent channel |
 
@@ -151,6 +151,8 @@ Deployments normally come from Git pushes. `vercel deploy` from this folder crea
 | `CONVEX_DEPLOYMENT` | Convex CLI (`npx convex dev`, MCP server) | `npx convex dev` |
 | `NEXT_PUBLIC_CONVEX_URL` | `ConvexReactClient` / server fetches | `npx convex dev` |
 | `NEXT_PUBLIC_CONVEX_SITE_URL` | Convex HTTP actions (e.g. webhooks) | `npx convex dev` |
+| `COURSE_ENGINE_SECRET` | Bearer secret for the Convex HTTP `/engine/*` surface; the same value is on the Convex deployment and read by the Next.js routes/engine. Generated with `openssl rand -hex 32`, never printed |
+| `COURSE_ENGINE_MODE` | `fake` or `live` (default `live`): fake runs the canned engine instead of the `course-builder` agent |
 | `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` | Local copy of the Mux access token kept on the Convex deployment (server only) | Mux Dashboard → Settings → Access Tokens |
 | `VERCEL_OIDC_TOKEN` | Vercel services called from local code (unused so far); expires after about 12 hours | `vercel link`, refreshed by `vercel env pull` |
 
@@ -159,6 +161,7 @@ Convex deployment env vars (`npx convex env list`), read by Convex functions:
 | Key | Value |
 | --- | ----- |
 | `CLERK_FRONTEND_API_URL` | Clerk Frontend API URL of the dev instance (`https://pro-giraffe-8779.clerk.accounts.dev`), read by `convex/auth.config.ts`. Clerk's guide uses this name; Convex's older docs call it `CLERK_JWT_ISSUER_DOMAIN`. |
+| `COURSE_ENGINE_SECRET` | Authenticates `POST /engine/*` HTTP actions (`convex/lib/engineAuth.ts`); fails closed when unset |
 | `MUX_SIGNING_KEY_ID`, `MUX_SIGNING_PRIVATE_KEY` | Mux signing key of the `LMS-Platform` development environment (private key base64, as Mux returns it), used by `convex/playback.ts` to sign playback tokens. Set only on the Convex deployment (piped into `npx convex env set`); never in `.env.local`, files or Vercel. Production needs its own key in the production Mux environment |
 | `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` | Mux access token for the `LMS-Platform` development environment (Video, Data, Robots and System, read and write), for server-side Mux calls from Convex actions. Used by `convex/mux.ts` (uploads, sync, removal). The same pair is in `.env.local`; it never goes into `NEXT_PUBLIC_*` variables or Vercel unless a Next.js route handler calls Mux |
 
@@ -231,6 +234,9 @@ convex/                       Convex backend functions; convex/_generated/ is wr
   schema.ts                   Tables and indexes (see Data model)
   lib/                        auth.ts (identity, isAdmin, isPro), access.ts (canAccessLesson), seedData.ts
   courses.ts lessons.ts …     Public and student functions; admin.ts, mux.ts and playback.ts ("use node"), muxData.ts, playbackData.ts, http.ts for admin and video
+  generation.ts engine.ts     Course engine: admin job API (create, resources, outline, approve, sources), engine write ops behind `/engine/*`
+  crons.ts                    Watchdog: fails stalled generation jobs every 5 minutes
+  lib/jobs.ts sourceScan.ts engineAuth.ts   Job transitions/events/outline validation, source-integrity scan, bearer check for `/engine/*`
   *.test.ts                   convex-test unit tests (never deployed: two dots in the name)
 docs/ARCHITECTURE.md          This file
 docs/features/                Reference page per feature area (see Status)
@@ -243,7 +249,7 @@ public/                       Static assets
 scripts/agent-deployment.sh   Gives an agent worktree its own Convex dev deployment and scoped deploy key (see Agent deployments)
 scripts/check-dev-tooling.sh  Verifies CLIs, MCP config, skills, .env.local, Vercel link; --online adds MCP, Clerk ↔ Convex, Mux sign-in and Vercel env checks
 src/
-  app/                        App Router routes only: /, /pricing, /courses/** (incl. `/courses/[slug]/chapters/[chapterSlug]` and `.../test`), /dashboard, /admin/**, /learnly, /sign-in, /sign-up
+  app/                        App Router routes only: /, /pricing, /courses/** (incl. `/courses/[slug]/chapters/[chapterSlug]` and `.../test`), /dashboard, /admin/** (incl. `/admin/generate` wizard and `/admin/generate/[jobId]` live view), `/api/course-builder/[action]` (start, approve, regenerate, resume), /learnly, /sign-in, /sign-up
   proxy.ts                    clerkMiddleware; optimistic gate for /dashboard, /admin, /learnly (pages re-check)
   components/
     ui/                       App-styled UI SDK wrappers (one file per component, e.g. accordion.tsx)
@@ -254,6 +260,7 @@ src/
     landing/ pricing/         Landing sections, full-page LMS knowledge-graph backdrop, hero animation + Mux preview player, pricing plans, Pro plan ID lookup
     course/ lesson/ video/    Catalog, course detail, lesson player, Mux player wrapper, dashboard
     admin/                    Admin forms, lessons list, Mux video panel
+    generate/                 Course generation wizard, resource inputs, live view, outline editor, jobs list
     tutor/                    Floating AI tutor widget and chat
   config/                     Static app config (site.ts: name, description)
   hooks/                      Shared client hooks (`use-*.ts`, "use client")

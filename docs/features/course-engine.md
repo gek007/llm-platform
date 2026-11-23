@@ -1,6 +1,6 @@
 # Course engine (learner side)
 
-Spec: [course-engine-design](../superpowers/specs/2026-11-23-course-engine-design.md). This page covers what learners see; admin generation and the `course-builder` agent are added by later milestones.
+Spec: [course-engine-design](../superpowers/specs/2026-11-23-course-engine-design.md). The first half covers what learners see; "Admin generation" covers the admin flow. The `course-builder` agent arrives in a later milestone (until then `COURSE_ENGINE_MODE=fake` stands in for it).
 
 ## Chaptered courses
 
@@ -28,3 +28,37 @@ Hebrew (`he`) is the only RTL language. Content containers (course description, 
 `digital-safety-basics`: free, published, Hebrew, 2 chapters x 2 lessons (`chapter-1`, `chapter-2`), each with a 6-slide deck and a 4-question test (the 8-10 questions / 6-12 slides rule applies only to engine-generated content). It is created by `npx convex run seed:run` and used by `e2e/chapters.spec.ts` (signed-out: two chapter groups, deck locked with a sign-in prompt).
 
 Signed-in end-to-end flows are not covered yet (no Clerk testing tokens); unit and component tests cover the chapter view, outline, sources and course card.
+
+## Admin generation
+
+Admin-only pages (the admin layout gates them; Convex re-checks with `requireAdmin`).
+
+- **Wizard** (`/admin/generate`, `src/components/generate/generate-form.tsx`): topic (required, 3 to 200 characters), language (English / עברית / Русский), level, length preset (short 3 x 2-3, medium 5 x 3, long 8 x 3-4; shown under the select), optional audience and notes, and resources: web URL, YouTube URL (embed-only), pasted text, PDF upload (20 MB, rejected client-side and again by `addResource`). **Generate** runs `createJob`, one `addResource` per resource (PDFs upload via `generateUploadUrl` first), then `POST /api/course-builder/start`, then opens the live view. The button disables while the request runs.
+- **Live view** (`/admin/generate/[jobId]`, `job-live-view.tsx`): reactive over `generation.get`, `events` and `sources`. Stepper Research, Outline, Writing, Ready; activity feed; sources list; per-chapter cards while writing (latest event for that chapter).
+- **Jobs list**: `/admin` shows all jobs (`generation.list`) under the courses table; "Generate with AI" opens the wizard.
+
+### Statuses and controls
+
+| Status | UI |
+| ------ | -- |
+| `queued` | Waiting; **Start** (normally the wizard already started it) |
+| `researching` | Feed and sources only |
+| `outline_ready` | Outline editor: rename, reorder, add/remove chapters (max 10) and subchapters (max 5), edit goals; **Save outline** (`updateOutline`) and **Approve and write** (saves unsaved edits, then `POST /approve`). Field values hold course-language content, so they use `dir="auto"` |
+| `writing` | Chapter cards, feed |
+| `ready` | **Open draft course** (`/admin/courses/<courseId>`) |
+| `failed` | Error and **Retry phase** (`POST /resume`) |
+| any, with `dispatchError` | Error and **Resume** (the engine could not be reached) |
+
+A 409 from a route (double click, or another tab acted first) shows "already <status>" and the reactive query refreshes the view; a 502 means dispatch failed and the job gets `dispatchError`.
+
+### Engine API and modes
+
+`POST /api/course-builder/{start|approve|regenerate|resume}` (`src/app/api/course-builder/[action]/route.ts`) re-checks the admin, runs the Convex transition (`startJob`, `approveOutline`, `requestRegenerate`) and dispatches the command to the engine. `COURSE_ENGINE_MODE=fake|live` (Next.js env, default `live`): `fake` runs a canned engine that calls the same `/engine/*` endpoints with the same validation, so the whole flow works without the agent or an Anthropic key. The agent (and the fake engine) write through the Convex HTTP surface `POST <CONVEX_SITE_URL>/engine/<op>` (`convex/http.ts`), authenticated with `Authorization: Bearer <COURSE_ENGINE_SECRET>` (constant-time check in `convex/lib/engineAuth.ts`; fails closed when unset). Ops live in `convex/engine.ts`: `getJob`, `setResourceStatus`, `saveSources`, `saveOutline`, `reportProgress`, `saveSubchapter`, `saveDeck`, `saveTest`, `finishJob`, `failJob`.
+
+### Watchdog
+
+`convex/crons.ts` runs `engine.failStalledJobs` every 5 minutes; a `researching` or `writing` job with no update for 15 minutes becomes `failed` ("stalled"). A late write from the agent on such a job is accepted, the job returns to `writing` and an event is logged.
+
+### Source integrity
+
+`convex/lib/sourceScan.ts` parses lesson markdown the way the renderer does. Every http(s) link must be a source the engine saved (`saveSources`, from pages it read); unknown URLs, including raw URLs in slide and test text, are rejected with "Unknown reference: <ref>". ```youtube / ```resource blocks must reference saved resources; pasted-text resources cannot be cited as `[n]`. Engine saves are accepted only in `writing` (or `failed`, which resumes) and are refused with `BAD_STATE` "Course is published; unpublish it to let the engine write" once the course is published. Regenerating a published course is likewise refused ("Unpublish the course to regenerate"), so AI content never lands in a live course.
