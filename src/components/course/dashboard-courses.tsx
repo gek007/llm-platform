@@ -32,6 +32,7 @@ export function DashboardCourses() {
           <CourseCard
             course={{
               ...course,
+              complete: course.complete,
               continueHref: course.nextLessonSlug ? lessonHref(course.slug, course.nextLessonSlug) : `/courses/${course.slug}`,
             }}
           />

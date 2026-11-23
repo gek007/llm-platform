@@ -22,6 +22,9 @@ function data(over: { locked: boolean; tier?: "free" | "pro"; withVideo?: boolea
   const base = { _id: "l1", slug: "one", title: "One", summary: "Intro summary", order: 1, durationMinutes: 10, isFreePreview: true, hasVideo: over.withVideo ?? false };
   return {
     course: { _id: "c1", slug: "c", title: "Course", tier: over.tier ?? "pro" },
+    language: "en",
+    chapter: null,
+    sources: [],
     lesson: over.locked ? base : { ...base, body: "## Secret body\n\nHello **world**" },
     locked: over.locked,
     prev: null,

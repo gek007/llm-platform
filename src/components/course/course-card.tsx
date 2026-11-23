@@ -16,6 +16,8 @@ export type CourseCardData = {
   /** Set on dashboard cards: shows progress and a Continue link. */
   completedCount?: number;
   continueHref?: string | null;
+  /** Every lesson done and every chapter test passed. */
+  complete?: boolean;
 };
 
 export function CourseCard({ course }: { course: CourseCardData }) {
@@ -23,6 +25,9 @@ export function CourseCard({ course }: { course: CourseCardData }) {
   return (
     <article className="group relative flex h-full flex-col rounded-xl border border-line bg-surface p-5 shadow-soft transition hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-lift">
       <div className="flex items-center gap-2">
+        {course.complete ? (
+          <span className="rounded-full bg-success/15 px-2 py-0.5 text-xs font-semibold text-success">Complete</span>
+        ) : null}
         <TierBadge tier={course.tier} />
         <LevelBadge level={course.level} />
       </div>

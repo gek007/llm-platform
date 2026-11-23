@@ -17,7 +17,7 @@ Living document. Update it whenever a step changes the stack, structure, or tool
 | 8 | LMS features ([design](superpowers/specs/2026-11-21-lms-features-design.md)): Clerk + Convex in the app, schema and seed, landing and custom pricing (Clerk Billing), course catalog, lesson player (Mux, markdown, quizzes, progress), dashboard, admin panel with Mux uploads, Pro-only AI tutor widget with Clerk-verified auth | Done | `3d802b1` |
 | 9 | Full-page LMS knowledge-graph backdrop on `/`, clickable Mux preview video in `HeroDemo`, custom signed Mux videos for TypeScript Foundations lessons 1–2, Vercel Production deployment | Done | `e507a09` |
 | 10 | Hands-on labs POC on E2B ([design](superpowers/specs/2026-11-23-labs-poc-design.md)): lab image with terminal (ttyd) and VS Code (code-server), `LabProvider` (E2B, Docker, fake), lab sessions and exercise checks in Convex, lab page | Planned | — |
-| 11 | Course engine demo ([design](superpowers/specs/2026-11-23-course-engine-design.md)): `course-builder` eve agent generates a course from a topic and resources (URL, PDF, YouTube embed, text) in English, Hebrew or Russian; chapters/subchapters, slide decks, practice quizzes, recorded chapter tests, sources; outline approval, live progress, admin review and results | Planned | — |
+| 11 | Course engine demo ([design](superpowers/specs/2026-11-23-course-engine-design.md)): `course-builder` eve agent generates a course from a topic and resources (URL, PDF, YouTube embed, text) in English, Hebrew or Russian; chapters/subchapters, slide decks, practice quizzes, recorded chapter tests, sources; outline approval, live progress, admin review and results | In progress (learner side done: chapters, decks, tests, completion; admin generation shell pending) | — |
 
 Production (<https://llm-platform-xi.vercel.app>) runs the full Learnly LMS app (backed by the Clerk dev instance and Convex dev deployment `hallowed-iguana-534` until a custom domain and Convex prod deploy key are configured). Each area has a reference page in `docs/features/`:
 
@@ -26,6 +26,7 @@ Production (<https://llm-platform-xi.vercel.app>) runs the full Learnly LMS app 
 | Foundation | [foundation.md](features/foundation.md) | Providers, `src/proxy.ts`, Convex schema/API/seed, claims, header/footer, markdown + quiz renderer, theme |
 | Landing and pricing | [landing.md](features/landing.md) | `/`, `/pricing`, Pro plan ID lookup, `CheckoutButton` states |
 | Courses | [course.md](features/course.md) | `/courses`, `/courses/[slug]`, lesson player, `/dashboard` |
+| Course engine | [course-engine.md](features/course-engine.md) | Chaptered courses: chapter page, slide deck, chapter tests, completion rule, RTL, `digital-safety-basics` seed |
 | Admin | [admin.md](features/admin.md) | `/admin/**`, `convex/admin.ts`, Mux upload/sync/webhook |
 | AI tutor | [tutor.md](features/tutor.md) | `agents/learnly/`, `src/components/tutor/`, Clerk auth on the agent channel |
 
@@ -242,12 +243,13 @@ public/                       Static assets
 scripts/agent-deployment.sh   Gives an agent worktree its own Convex dev deployment and scoped deploy key (see Agent deployments)
 scripts/check-dev-tooling.sh  Verifies CLIs, MCP config, skills, .env.local, Vercel link; --online adds MCP, Clerk ↔ Convex, Mux sign-in and Vercel env checks
 src/
-  app/                        App Router routes only: /, /pricing, /courses/**, /dashboard, /admin/**, /learnly, /sign-in, /sign-up
+  app/                        App Router routes only: /, /pricing, /courses/** (incl. `/courses/[slug]/chapters/[chapterSlug]` and `.../test`), /dashboard, /admin/**, /learnly, /sign-in, /sign-up
   proxy.ts                    clerkMiddleware; optimistic gate for /dashboard, /admin, /learnly (pages re-check)
   components/
     ui/                       App-styled UI SDK wrappers (one file per component, e.g. accordion.tsx)
     layout/                   Site header and footer
     providers/                ClerkClientProvider, ConvexClientProvider (stores the user on sign-in)
+    chapter/                  ChapterPage/ChapterView, SlideDeck, Slide, ChapterTest (course engine)
     markdown/                 LessonMarkdown, CodeBlock, QuizBlock, parseQuiz
     landing/ pricing/         Landing sections, full-page LMS knowledge-graph backdrop, hero animation + Mux preview player, pricing plans, Pro plan ID lookup
     course/ lesson/ video/    Catalog, course detail, lesson player, Mux player wrapper, dashboard
@@ -284,15 +286,24 @@ Defined in `convex/schema.ts`; seed data in `convex/lib/seedData.ts` (`npx conve
 | Table | Fields | Indexes |
 | ----- | ------ | ------- |
 | `users` | `clerkId`, `name`, `email?`, `imageUrl?`, `plan?` | `by_clerkId` |
-| `courses` | `slug`, `title`, `summary`, `description` (markdown), `level`, `tier` (`free` \| `pro`), `status` (`draft` \| `published` \| `archived`), `tags`, `outcomes`, `coverImageUrl?`, `order` | `by_slug`, `by_status_order` |
-| `lessons` | `courseId`, `slug`, `title`, `summary`, `body` (markdown), `order`, `durationMinutes`, `isFreePreview`, `muxUploadId?`, `muxAssetId?`, `muxPlaybackId?`, `videoStatus?` | `by_course_order`, `by_course_slug`, `by_muxAssetId`, `by_muxUploadId` |
+| `courses` | `slug`, `title`, `summary`, `description` (markdown), `level`, `tier` (`free` \| `pro`), `status` (`draft` \| `published` \| `archived`), `tags`, `outcomes`, `coverImageUrl?`, `order`, `language?` (`en` \| `he` \| `ru`, default `en`), `generationJobId?` | `by_slug`, `by_status_order` |
+| `lessons` | `courseId`, `slug`, `title`, `summary`, `body` (markdown), `order`, `durationMinutes`, `isFreePreview`, `muxUploadId?`, `muxAssetId?`, `muxPlaybackId?`, `videoStatus?`, `chapterId?`, `sourceIds?` | `by_course_order`, `by_course_slug`, `by_muxAssetId`, `by_muxUploadId` |
 | `enrollments` | `userId`, `courseId`, `enrolledAt` | `by_user`, `by_user_course`, `by_course` |
 | `lessonProgress` | `userId`, `courseId`, `lessonId`, `completedAt` | `by_user_course`, `by_user_lesson`, `by_course`, `by_lesson` |
+| `chapters` | `courseId`, `slug`, `title`, `summary`, `order` | `by_course_order`, `by_course_slug` |
+| `slideDecks` | `courseId`, `chapterId`, `slides[]`, `updatedAt` (one row per chapter) | `by_chapter` |
+| `chapterTests` | `courseId`, `chapterId`, `version`, `passPercent`, `maxAttempts`, `questions[]` (one row per chapter; edits bump `version` in place) | `by_chapter`, `by_course` |
+| `testAttempts` | `userId`, `courseId`, `testId`, `testVersion`, `answers`, `scorePercent`, `passed`, `submittedAt` | `by_user_test`, `by_test`, `by_user_course` |
+| `courseResources` | `jobId`, `courseId?`, `kind`, `title`, `url?`, `storageId?`, `text?`, `origin` (`admin` \| `engine`), `readStatus` | `by_job`, `by_course` |
+| `generationJobs` | `createdBy`, `topic`, `language`, `level`, `length`, `audience?`, `notes?`, `status`, `eveSessionId?`, `dispatchError?`, `outline?`, `courseId?`, `error?`, `usage?` | see `convex/schema.ts` |
+| `generationEvents` | `jobId`, `at`, `kind`, `message`, `chapterOrder?` | `by_job_at` |
+| `generationSources` | `jobId`, `url`, `title`, `kind`, `resourceId?`, `excerpt?` | `by_job`, `by_job_url` |
 
 | Module | Functions |
 | ------ | --------- |
-| `courses` | `listPublished`, `getBySlug` (outline with `locked`, no bodies) |
-| `lessons` | `getForViewer` (body and playback ID only when unlocked; `prev`/`next`) |
+| `courses` | `listPublished`, `getBySlug` (outline with `locked`, no bodies; `language` and `chapters` with `hasDeck`/`test`) |
+| `lessons` | `getForViewer` (body and playback ID only when unlocked; `prev`/`next`; `language`, `chapter`, `sources`) |
+| `chapters` | `getForViewer` (deck only when unlocked, lessons, test summary with best score and attempts, `prev`/`next`) |
 | `enrollments` | `enroll` (`PRO_REQUIRED` error), `isEnrolled`, `listMine` |
 | `progress` | `setComplete`, `forCourse` |
 | `users`, `viewer` | `store` (upsert on sign-in), `get` (`signedIn`, `isAdmin`, `isPro`, `user`) |
