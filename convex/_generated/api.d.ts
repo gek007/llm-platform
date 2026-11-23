@@ -28,6 +28,7 @@ import type * as muxData from "../muxData.js";
 import type * as playback from "../playback.js";
 import type * as playbackData from "../playbackData.js";
 import type * as progress from "../progress.js";
+import type * as resources from "../resources.js";
 import type * as seed from "../seed.js";
 import type * as tests from "../tests.js";
 import type * as users from "../users.js";
@@ -60,6 +61,7 @@ declare const fullApi: ApiFromModules<{
   playback: typeof playback;
   playbackData: typeof playbackData;
   progress: typeof progress;
+  resources: typeof resources;
   seed: typeof seed;
   tests: typeof tests;
   users: typeof users;
