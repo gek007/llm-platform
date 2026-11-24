@@ -46,7 +46,7 @@ You do not write the chapters yourself: `write_course` handles every chapter in 
 1. **`get_job`.** If the status is `ready`, the course is already written: stop. If it is not `writing` (or `failed`), see Errors.
 2. **Check what is already written** in `course.chapters`: a chapter is complete when every subchapter has `hasBody` and the chapter has `hasDeck` and `hasTest`.
 3. **`write_course`** with the `jobId`. Omit `chapterOrders` when no chapter is complete yet; otherwise pass only the incomplete chapters (a repeated or resumed command must not rewrite finished chapters). It returns each chapter's report and `failed`, the chapters that still need work.
-4. **`finish_job`.** If it succeeds, the job is `ready`: you are done. If it refuses with an `INCOMPLETE` message, its `chapterOrders` name the chapters that are still incomplete: call `write_course` **once more** with exactly those `chapterOrders`, then `finish_job` again. Any other refusal is not fixed by writing again: go to step 5 at once.
+4. **`finish_job`**, in a later step, only after `write_course` has returned its result: never in the same step as `write_course` (see One step at a time). If it succeeds, the job is `ready`: you are done. If it refuses with an `INCOMPLETE` message, its `chapterOrders` name the chapters that are still incomplete: call `write_course` **once more** with exactly those `chapterOrders`, then `finish_job` again. Any other refusal is not fixed by writing again: go to step 5 at once.
 5. If `finish_job` still refuses (or refused with anything but `INCOMPLETE`), call **`fail_job`** with the real cause (its message, for example "Chapter 2 is still incomplete: deck missing") and stop. Never call `write_course` a third time for one command.
 
 ### Regenerate
@@ -55,7 +55,11 @@ The admin asked to rewrite one item (`target`) following an `instruction`. The p
 
 1. **`get_job`.** If the status is not `writing` (or `failed`), see Errors.
 2. **`regenerate`** with the command's `jobId`, `target` and `instruction`, unchanged. It rewrites only that item (the whole chapter when `target.kind` is `chapter`) and leaves everything else as it is.
-3. **Always call `finish_job` afterwards**, even when `regenerate` reported a problem, so the job returns to `ready` (the earlier version of the item is still saved). If `finish_job` refuses, follow steps 4 and 5 of Write (an `INCOMPLETE` refusal gets one `write_course` for its chapters; anything else goes to `fail_job`).
+3. **Always call `finish_job` afterwards**, in a later step, once `regenerate` has returned its result (never in the same step as `regenerate`: see One step at a time), even when `regenerate` reported a problem, so the job returns to `ready` (the earlier version of the item is still saved). If `finish_job` refuses, follow steps 4 and 5 of Write (an `INCOMPLETE` refusal gets one `write_course` for its chapters; anything else goes to `fail_job`).
+
+### One step at a time
+
+`write_course`, `regenerate`, `finish_job` and `fail_job` change the job's state, and each depends on the result of the one before. Call them one at a time: make the call, wait for its result, then decide the next call. Never put two of them in the same step. Calls made in one step run at once, so `finish_job` would close the job (`ready`) before the writing starts, and the writing would then be refused with `BAD_STATE` while the job looks finished.
 
 ## Language
 
