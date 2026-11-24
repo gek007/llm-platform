@@ -43,6 +43,10 @@ describe("course-builder agent configuration", () => {
       "finish_job",
       "once more",
       "Always call `finish_job` afterwards",
+      // a regenerate and finish_job sent in one step ran at once: the job closed before the rewrite
+      "never in the same step as `regenerate`",
+      "never in the same step as `write_course`",
+      "Never put two of them in the same step",
       "kind `error`",
       // fix round 1: job-level failures
       "fail_job",
