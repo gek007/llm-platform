@@ -51,6 +51,8 @@ export const DECK_RULES = {
   mermaidChars: 3_000,
   minChartPoints: 2,
   maxChartPoints: 12,
+  /** One validated colour per slice (see the chart palette in globals.css); more is unreadable anyway. */
+  maxPieSlices: 6,
   chartLabelChars: 40,
   maxTableColumns: 6,
   maxTableRows: 8,
@@ -169,6 +171,9 @@ export function visualProblems(visual: SlideShape["visual"]): string[] {
   if (visual.type === "chart") {
     if (visual.data.some((d) => !Number.isFinite(d.value))) out.push("chart values must be finite numbers");
     if (visual.chartType === "pie") {
+      if (visual.data.length > R.maxPieSlices) {
+        out.push(`a pie chart has at most ${R.maxPieSlices} slices; use a bar chart for more`);
+      }
       if (visual.data.some((d) => d.value < 0)) out.push("a pie chart cannot have negative values");
       else if (visual.data.reduce((sum, d) => sum + d.value, 0) <= 0) out.push("a pie chart needs a positive total");
     }
@@ -269,6 +274,13 @@ function checkDeck(deck: { slides: SlideShape[] }, ctx: z.RefinementCtx) {
 export const deckDraftSchema = z.object(deckShape).superRefine(checkDeck);
 /** The full deck: `{ chapterId, title, slides }`. */
 export const deckSchema = z.object({ chapterId: z.string().min(1), ...deckShape }).superRefine(checkDeck);
+
+/**
+ * What the viewer takes: a deck whose slides all have ids. Wider than `Deck` on purpose, so stored
+ * decks (older, or hand-edited) render through `withSlideIds` without passing the generation rules.
+ */
+export type RenderableSlide = StoredSlide & { id: string };
+export type RenderableDeck = { chapterId: string; title: string; slides: RenderableSlide[] };
 
 export type Visual = z.infer<typeof visualSchema>;
 export type SlideCode = z.infer<typeof codeSchema>;

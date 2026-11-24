@@ -1,0 +1,277 @@
+{
+  "chapterId": "how-dns-works/chapter-1",
+  "title": "How a DNS lookup works",
+  "slides": [
+    {
+      "id": "s1",
+      "title": "How a DNS lookup works",
+      "layout": "title",
+      "bullets": [
+        "Follow a name from the browser to its IP address"
+      ],
+      "notes": "In this chapter we follow one domain name from your browser all the way to an IP address. We meet the servers that take part, the records they return, and the caches that make most lookups almost instant. By the end you can explain why a DNS change seems to take time to spread."
+    },
+    {
+      "id": "s2",
+      "title": "The phone book of the internet",
+      "layout": "quote",
+      "quote": "The Domain Name System (DNS) is the phone book of the internet.",
+      "attribution": "What is DNS? (eval fixture)",
+      "notes": "This short line captures the whole idea of DNS. A phone book turns a name you remember into a number you can dial. DNS does the same job for computers: it turns a domain name into an address they can reach."
+    },
+    {
+      "id": "s3",
+      "title": "Names for people, addresses for computers",
+      "layout": "bullets",
+      "bullets": [
+        "People remember names such as example.com",
+        "Computers route traffic by IP address, such as 93.184.216.34",
+        "DNS (Domain Name System): the lookup service between them",
+        "DNS turns a domain name into an IP address"
+      ],
+      "notes": "You type a name, but the network cannot route a name. Traffic moves between IP addresses, which are numbers. DNS is the service that sits in between and answers the question: which IP address belongs to this name?"
+    },
+    {
+      "id": "s4",
+      "title": "Four kinds of server work together",
+      "layout": "bullets+visual",
+      "bullets": [
+        "Each server knows one part of the answer",
+        "13 root server names, a to m",
+        "Each root name runs on many machines worldwide"
+      ],
+      "visual": {
+        "type": "table",
+        "headers": [
+          "Server",
+          "What it does"
+        ],
+        "rows": [
+          [
+            "Recursive resolver",
+            "Does the legwork of finding the answer"
+          ],
+          [
+            "Root name server",
+            "Knows the servers for each top-level domain"
+          ],
+          [
+            "TLD name server",
+            "Knows the authoritative servers for each domain"
+          ],
+          [
+            "Authoritative name server",
+            "Holds the domain's records, gives the final answer"
+          ]
+        ]
+      },
+      "notes": "A lookup involves four kinds of server. The recursive resolver is usually run by your internet provider or a public service, and it does the work for you. The root and TLD servers only point onward, and the authoritative name server holds the actual records. The 13 root server names run from a.root-servers.net to m.root-servers.net, and each one is served from many machines around the world."
+    },
+    {
+      "id": "s5",
+      "title": "The steps of an uncached lookup",
+      "layout": "visual-full",
+      "visual": {
+        "type": "mermaid",
+        "code": "sequenceDiagram\n  participant device as Your device\n  participant resolver as Recursive resolver\n  participant root as Root server\n  participant tld as TLD server\n  participant auth as Authoritative server\n  device->>resolver: www.example.com?\n  resolver->>root: www.example.com?\n  root-->>resolver: Ask the .com servers\n  resolver->>tld: www.example.com?\n  tld-->>resolver: Ask example.com servers\n  resolver->>auth: www.example.com?\n  auth-->>resolver: 93.184.216.34\n  resolver-->>device: 93.184.216.34",
+        "caption": "Nothing is cached yet, so the resolver asks three servers"
+      },
+      "notes": "Your device, called the stub resolver, asks the recursive resolver for www.example.com. The resolver asks a root server, which sends it to the .com servers, and a .com TLD server sends it to the name servers of example.com. The authoritative server answers with the IP address, and the resolver returns it to your device and keeps a copy."
+    },
+    {
+      "id": "s6",
+      "title": "Recursive versus iterative queries",
+      "layout": "two-column",
+      "left": [
+        "Recursive query: your device to the resolver",
+        "One question, one final answer",
+        "Your device is the stub resolver"
+      ],
+      "right": [
+        "Iterative queries: the resolver to each server",
+        "Each answer is a referral onward",
+        "The last server gives the address"
+      ],
+      "notes": "Two kinds of question happen in one lookup. Your device asks a recursive query: it asks once and expects the finished answer. The resolver then asks iterative queries, and each server replies with a referral to the next server until the authoritative server gives the address."
+    },
+    {
+      "id": "s7",
+      "title": "DNS travels over UDP port 53",
+      "layout": "bullets+visual",
+      "bullets": [
+        "Most DNS questions use UDP on port 53",
+        "A response too large for UDP is resent over TCP"
+      ],
+      "visual": {
+        "type": "mermaid",
+        "code": "flowchart LR\n  ask[\"DNS question\"] --> udp[\"UDP port 53\"]\n  udp --> fits{\"Response fits UDP?\"}\n  fits -- Yes --> answer[\"Answer received\"]\n  fits -- No --> tcp[\"Resent over TCP\"]\n  tcp --> answer",
+        "caption": "UDP first, TCP only for large responses"
+      },
+      "notes": "DNS questions are small, so most of them travel over UDP on port 53. When a response is too large to fit, it is sent again over TCP. As a developer, port 53 is the one to remember when you debug DNS traffic."
+    },
+    {
+      "id": "s8",
+      "title": "Watch a lookup with dig",
+      "layout": "code",
+      "bullets": [
+        "+short prints only the address",
+        "+trace shows every referral from the root down"
+      ],
+      "code": {
+        "language": "bash",
+        "content": "dig www.example.com A +short\ndig www.example.com A +trace"
+      },
+      "notes": "Try these two commands in a terminal. The first prints just the IP address for www.example.com. The second walks the lookup yourself, showing the root, TLD and authoritative steps we just saw in the diagram."
+    },
+    {
+      "id": "s9",
+      "title": "Answers come as resource records",
+      "layout": "bullets+visual",
+      "bullets": [
+        "Resource record: one piece of DNS data",
+        "Each has a name, type, TTL and value",
+        "The type says what the value holds"
+      ],
+      "visual": {
+        "type": "table",
+        "headers": [
+          "Type",
+          "Holds",
+          "Example value"
+        ],
+        "rows": [
+          [
+            "A",
+            "An IPv4 address",
+            "93.184.216.34"
+          ],
+          [
+            "AAAA",
+            "An IPv6 address",
+            "2606:2800:220:1:248:1893:25c8:1946"
+          ],
+          [
+            "CNAME",
+            "An alias to another name",
+            "www.example.com → example.com"
+          ],
+          [
+            "MX",
+            "The domain's mail server",
+            "10 mail.example.com"
+          ],
+          [
+            "NS",
+            "The domain's authoritative name servers",
+            "ns1.example.com"
+          ],
+          [
+            "TXT",
+            "Free text, often proof of ownership",
+            "v=spf1 -all"
+          ]
+        ]
+      },
+      "notes": "The authoritative server answers with resource records. Every record has a name, a type, a time to live and a value. The A record is the one our lookup asked for, but you will meet the other types when you set up mail, aliases or prove you own a domain."
+    },
+    {
+      "id": "s10",
+      "title": "TTL says how long a copy lasts",
+      "layout": "bullets+visual",
+      "bullets": [
+        "TTL (time to live): reuse time in seconds",
+        "Every answer is cached for its TTL",
+        "Caching avoids asking four servers every time"
+      ],
+      "visual": {
+        "type": "table",
+        "headers": [
+          "TTL (seconds)",
+          "Means"
+        ],
+        "rows": [
+          [
+            "300",
+            "5 minutes"
+          ],
+          [
+            "3600",
+            "1 hour"
+          ],
+          [
+            "86400",
+            "1 day"
+          ]
+        ]
+      },
+      "notes": "Asking four servers for every name would be slow, so every answer is cached. The TTL tells each cache how many seconds it may reuse its copy. Remember that TTL is always in seconds: 3600 means one hour, not one hour and some minutes."
+    },
+    {
+      "id": "s11",
+      "title": "A lookup stops at the first fresh copy",
+      "layout": "bullets+visual",
+      "bullets": [
+        "Copies live in three places",
+        "Browser, operating system, recursive resolver",
+        "A full lookup runs only when all miss"
+      ],
+      "visual": {
+        "type": "mermaid",
+        "code": "flowchart LR\n  start[\"Lookup starts\"] --> browser{\"Browser cache fresh?\"}\n  browser -- Yes --> done[\"Use cached copy\"]\n  browser -- No --> os{\"OS cache fresh?\"}\n  os -- Yes --> done\n  os -- No --> res{\"Resolver cache fresh?\"}\n  res -- Yes --> done\n  res -- No --> full[\"Full lookup\"]",
+        "caption": "Each cache is checked in turn"
+      },
+      "notes": "Before any server is asked, the browser checks its own cache, then the operating system checks its cache. If both miss, the recursive resolver checks its cache. Only when every copy is missing or expired does the resolver walk from the root down."
+    },
+    {
+      "id": "s12",
+      "title": "Short TTL or long TTL",
+      "layout": "two-column",
+      "left": [
+        "Short TTL",
+        "Changes reach users quickly",
+        "More questions to the authoritative server"
+      ],
+      "right": [
+        "Long TTL",
+        "Less traffic to the authoritative server",
+        "Changes are slow to spread",
+        "Old copies served until TTL runs out"
+      ],
+      "notes": "Choosing a TTL is a trade-off. A short TTL lets a change reach users quickly but sends more questions to the authoritative server. A long TTL cuts that traffic, but old copies stay in caches until their TTL runs out, which is why a DNS change seems to take time to propagate."
+    },
+    {
+      "id": "s13",
+      "title": "How much caching saves",
+      "layout": "visual-full",
+      "visual": {
+        "type": "chart",
+        "chartType": "bar",
+        "data": [
+          {
+            "label": "Uncached lookup",
+            "value": 90
+          },
+          {
+            "label": "Cached lookup",
+            "value": 1
+          }
+        ],
+        "caption": "Example timings in milliseconds; uncached is root 20 + TLD 30 + authoritative 40"
+      },
+      "notes": "Here is one example lookup in milliseconds. Uncached, the resolver spends 20 ms at the root, 30 ms at the TLD server and 40 ms at the authoritative server, 90 ms in total. A moment later the same answer comes from the resolver's cache in about 1 ms."
+    },
+    {
+      "id": "s14",
+      "title": "What to remember",
+      "layout": "summary",
+      "bullets": [
+        "DNS turns a domain name into an IP address",
+        "Resolver asks root, then TLD, then authoritative server",
+        "Answers are resource records with a name, type, TTL, value",
+        "Browser, OS and resolver cache answers for the TTL",
+        "TTL trades fast changes against fewer queries"
+      ],
+      "notes": "Let's recap the chapter. A lookup follows a fixed path from root to TLD to authoritative server, and the answer comes back as resource records. Caching in three places makes most lookups take about a millisecond, and the TTL decides how long those copies live."
+    }
+  ]
+}

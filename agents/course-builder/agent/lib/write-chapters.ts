@@ -169,7 +169,9 @@ export async function runDeck(
           return { ok: false, error: err instanceof Error ? err.message : String(err) };
         }
       },
-      checkDiagrams: validateDiagrams,
+      // Steps are called as plain functions, never as methods: the workflow runtime serializes a
+      // step's `this`, and this object (with `ask`) is not serializable.
+      checkDiagrams: (codes) => validateDiagrams(codes),
       save: (deck) => saveDeck(job.jobId, chapterOrder, deck),
       warn: (message) => logProgress(job.jobId, "chapter", `Chapter ${chapterOrder} slides: ${message}`, chapterOrder),
     });

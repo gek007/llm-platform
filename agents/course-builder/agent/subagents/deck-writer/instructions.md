@@ -40,7 +40,7 @@ A field the layout does not show is an error: no `visual` on a `bullets` slide, 
   - Node ids are plain ASCII words (`resolver`, `rootServer`); the label carries the display text.
   - No `%%{init}%%` directives, no `style`, `classDef` or colours (the platform themes diagrams), no `click` or links, no HTML tags such as `<br>`.
   - One statement per line. Close every bracket.
-- **`chart`**: `chartType` is `bar`, `line` or `pie`; `data` is 2-12 `{ label, value }` points. Only numbers the lessons or sources state. Never invent data to fill a chart; without real numbers use a diagram or a table. Say the unit in the `caption`.
+- **`chart`**: `chartType` is `bar`, `line` or `pie`; `data` is 2-12 `{ label, value }` points (a pie has at most 6 slices, none negative). Only numbers the lessons or sources state. Never invent data to fill a chart; without real numbers use a diagram or a table. Say the unit in the `caption`.
 - **`table`**: `headers` (2-6) and `rows` (1-8), every row as long as `headers`, short cells.
 - **`image_prompt`**: a placeholder for an illustration the platform cannot generate yet; learners see only its `alt` text in a frame. Use at most one per deck, and never for something a diagram could show.
 

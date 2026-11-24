@@ -13,7 +13,9 @@ import {
   validateGeneratedDeck,
   validateSlideData,
   withSlideIds,
+  type Deck,
   type DeckSlide,
+  type RenderableDeck,
 } from "./deck";
 import type { Slide as StoredSlide } from "./engineTypes";
 
@@ -141,6 +143,10 @@ describe("deck schema", () => {
     expect(visual({ ...chart, chartType: "pie", data: [{ label: "A", value: -1 }, { label: "B", value: 2 }] }).success).toBe(false);
     expect(visual({ ...chart, chartType: "pie", data: [{ label: "A", value: 0 }, { label: "B", value: 0 }] }).success).toBe(false);
     expect(visual({ ...chart, data: [{ label: "A", value: "1" }, { label: "B", value: 2 }] }).success).toBe(false);
+    const points = (n: number) => Array.from({ length: n }, (_, i) => ({ label: `P${i}`, value: i + 1 }));
+    expect(visual({ ...chart, chartType: "pie", data: points(6) }).success).toBe(true);
+    expect(visual({ ...chart, chartType: "pie", data: points(7) }).success).toBe(false);
+    expect(visual({ ...chart, chartType: "bar", data: points(12) }).success).toBe(true);
     expect(visual({ type: "image_prompt", prompt: "A globe" }).success).toBe(false);
     expect(visual({ type: "image", url: "https://example.com/x.png" }).success).toBe(false);
     expect(visual({ type: "html", html: "<svg/>" }).success).toBe(false);
@@ -210,8 +216,9 @@ describe("stored decks", () => {
     expect(withSlideIds(stored).map((s) => s.id)).toEqual(["slide-1", "intro", "intro-3"]);
   });
 
-  it("a schema slide is a storable slide", () => {
+  it("a schema slide is a storable slide, and a schema deck is a renderable deck", () => {
     expectTypeOf<DeckSlide>().toExtend<StoredSlide>();
+    expectTypeOf<Deck>().toExtend<RenderableDeck>();
   });
 
   it("deckTexts lists every learner-visible string except slide code", () => {

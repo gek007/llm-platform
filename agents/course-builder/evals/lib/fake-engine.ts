@@ -236,8 +236,13 @@ export function createFakeEngine(job: FakeJob) {
 
 export type FakeEngine = ReturnType<typeof createFakeEngine>;
 
-/** Serves a fake engine on 127.0.0.1 (random port) at `POST /engine/<op>`. */
-export async function serveFakeEngine(engine: FakeEngine): Promise<{ url: string; close: () => Promise<void> }> {
+/**
+ * Serves fake engines on 127.0.0.1 (random port) at `POST /engine/<op>`. With several engines (one
+ * job each), a call goes to the engine that owns its `jobId`; an unknown job is refused by the first.
+ */
+export async function serveFakeEngine(engines: FakeEngine | FakeEngine[]): Promise<{ url: string; close: () => Promise<void> }> {
+  const all = Array.isArray(engines) ? engines : [engines];
+  const owner = (jobId: unknown) => all.find((e) => e.job.jobId === jobId) ?? all[0]!;
   const server: Server = createServer((req, res) => {
     const reply = (status: number, body: unknown) => {
       res.writeHead(status, { "content-type": "application/json" });
@@ -257,7 +262,7 @@ export async function serveFakeEngine(engine: FakeEngine): Promise<{ url: string
         return reply(400, { ok: false, error: "INVALID: body is not JSON" });
       }
       try {
-        const result = engine.call(op, args);
+        const result = owner(args.jobId).call(op, args);
         reply(result.ok ? 200 : 400, result);
       } catch (err) {
         reply(500, { ok: false, error: `INTERNAL: ${err instanceof Error ? err.message : String(err)}` });
