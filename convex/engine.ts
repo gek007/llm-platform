@@ -1,7 +1,8 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery, type QueryCtx } from "./_generated/server";
-import { deepEqual, requireText, TEXT_LIMIT, validateSlide, validateTestQuestion } from "./lib/contentValidation";
+import { deepEqual, requireText, TEXT_LIMIT, validateTestQuestion } from "./lib/contentValidation";
+import { DECK_RULES, deckDraftSchema, deckTexts, formatIssues } from "./lib/deck";
 import {
   eventKindValidator,
   outlineValidator,
@@ -62,8 +63,8 @@ const LIMITS = {
   text: TEXT_LIMIT,
   sourcesPerCall: 50,
   sourceIdsPerLesson: 50,
-  minSlides: 6,
-  maxSlides: 12,
+  minSlides: DECK_RULES.minSlides,
+  maxSlides: DECK_RULES.maxSlides,
   minQuestions: 8,
   maxQuestions: 10,
   maxDurationMinutes: 240,
@@ -508,27 +509,32 @@ export const saveSubchapter = internalMutation({
 });
 
 export const saveDeck = internalMutation({
-  args: { jobId: v.string(), chapterOrder: v.number(), slides: v.array(slideValidator) },
+  args: {
+    jobId: v.string(),
+    chapterOrder: v.number(),
+    title: v.optional(v.string()),
+    slides: v.array(slideValidator),
+  },
   handler: async (ctx, args) => {
     const job = await enter(ctx, await loadJob(ctx, args.jobId), "saveDeck", ["writing"], {
       content: true,
     });
     const chapter = await chapterOf(ctx, job, args.chapterOrder);
-    const { slides } = args;
-    if (slides.length < LIMITS.minSlides || slides.length > LIMITS.maxSlides) {
-      fail("INVALID", `a deck needs ${LIMITS.minSlides}-${LIMITS.maxSlides} slides, got ${slides.length}`);
+    if (args.slides.length < LIMITS.minSlides || args.slides.length > LIMITS.maxSlides) {
+      fail("INVALID", `a deck needs ${LIMITS.minSlides}-${LIMITS.maxSlides} slides, got ${args.slides.length}`);
     }
-    slides.forEach((s, i) => validateSlide(s, i + 1));
-    const text = slides.flatMap((s) => [
-      s.title,
-      ...(s.bullets ?? []),
-      ...(s.left ?? []),
-      ...(s.right ?? []),
-      s.quote ?? "",
-      s.attribution ?? "",
-      s.notes,
-    ]);
-    rejectUnknownRefs(await knownRefs(ctx, job._id), { texts: text });
+    // The deck schema (lib/deck.ts) is the authority for generated decks: shape, per-layout fields,
+    // bullet limits, title first and summary last, unique slide ids. The share of slides with a
+    // visual is the generator's rule and is not checked here: a diagram that could not be made
+    // valid falls back to bullets, and that deck must still save.
+    const draft = {
+      title: args.title?.trim() || chapter.title.slice(0, DECK_RULES.titleChars),
+      slides: args.slides,
+    };
+    const parsed = deckDraftSchema.safeParse(draft);
+    if (!parsed.success) fail("INVALID", formatIssues(parsed.error, draft).join("; "));
+    const { title, slides } = parsed.data;
+    rejectUnknownRefs(await knownRefs(ctx, job._id), { texts: deckTexts(slides, title) });
 
     const existing = await ctx.db
       .query("slideDecks")
@@ -536,12 +542,13 @@ export const saveDeck = internalMutation({
       .unique();
     let deckId: Id<"slideDecks">;
     if (existing) {
-      await ctx.db.patch(existing._id, { slides, updatedAt: Date.now() });
+      await ctx.db.patch(existing._id, { title, slides, updatedAt: Date.now() });
       deckId = existing._id;
     } else {
       deckId = await ctx.db.insert("slideDecks", {
         courseId: chapter.courseId,
         chapterId: chapter._id,
+        title,
         slides,
         updatedAt: Date.now(),
       });

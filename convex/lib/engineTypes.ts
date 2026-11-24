@@ -4,11 +4,33 @@ import type { levelValidator } from "../schema";
 export const languageValidator = v.union(v.literal("en"), v.literal("he"), v.literal("ru"));
 export const lengthValidator = v.union(v.literal("short"), v.literal("medium"), v.literal("long"));
 
+export const visualValidator = v.union(
+  v.object({ type: v.literal("mermaid"), code: v.string(), caption: v.optional(v.string()) }),
+  v.object({
+    type: v.literal("chart"),
+    chartType: v.union(v.literal("bar"), v.literal("line"), v.literal("pie")),
+    data: v.array(v.object({ label: v.string(), value: v.number() })),
+    caption: v.optional(v.string()),
+  }),
+  v.object({ type: v.literal("table"), headers: v.array(v.string()), rows: v.array(v.array(v.string())) }),
+  v.object({ type: v.literal("image_prompt"), prompt: v.string(), alt: v.string() }),
+);
+
+/**
+ * A stored slide. The storage shape of the deck schema in ./deck.ts (Zod), which holds the rules;
+ * this validator is wider so decks saved before `id`, `visual` and `code` existed still load:
+ * `id` is optional here and filled in at read time (`withSlideIds`). Every addition is optional,
+ * so no data migration is needed.
+ */
 export const slideValidator = v.object({
+  id: v.optional(v.string()),
   layout: v.union(
     v.literal("title"),
     v.literal("bullets"),
+    v.literal("bullets+visual"),
+    v.literal("visual-full"),
     v.literal("two-column"),
+    v.literal("code"),
     v.literal("quote"),
     v.literal("summary"),
   ),
@@ -18,6 +40,8 @@ export const slideValidator = v.object({
   right: v.optional(v.array(v.string())),
   quote: v.optional(v.string()),
   attribution: v.optional(v.string()),
+  visual: v.optional(visualValidator),
+  code: v.optional(v.object({ language: v.string(), content: v.string() })),
   notes: v.string(),
 });
 

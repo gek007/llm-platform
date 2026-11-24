@@ -1,4 +1,5 @@
 import { ConvexError } from "convex/values";
+import { codeSchema, formatIssues, visualProblems, visualSchema } from "./deck";
 import { validateQuestion } from "./grading";
 import type { Question, Slide } from "./engineTypes";
 
@@ -45,12 +46,28 @@ export function validateSlide(slide: Slide, n: number) {
     if (!items || items.length === 0) invalid(`${where} (${slide.layout}) needs ${field}`);
     items.forEach((item) => requireText(item, `${where} ${field}`, TEXT_LIMIT));
   };
-  if (slide.layout === "bullets" || slide.layout === "summary") list(slide.bullets, "bullets");
+  if (slide.layout === "bullets" || slide.layout === "summary" || slide.layout === "bullets+visual") {
+    list(slide.bullets, "bullets");
+  }
   if (slide.layout === "two-column") {
     list(slide.left, "left");
     list(slide.right, "right");
   }
   if (slide.layout === "quote") requireText(slide.quote ?? "", `${where} quote`, TEXT_LIMIT);
+  if ((slide.layout === "bullets+visual" || slide.layout === "visual-full") && !slide.visual) {
+    invalid(`${where} (${slide.layout}) needs a visual`);
+  }
+  if (slide.layout === "code" && !slide.code) invalid(`${where} (code) needs code`);
+  // Visuals and code follow the deck schema even in a hand edit: the viewer renders them as data.
+  if (slide.visual) {
+    const parsed = visualSchema.safeParse(slide.visual);
+    const problem = parsed.success ? visualProblems(parsed.data)[0] : formatIssues(parsed.error)[0];
+    if (problem) invalid(`${where} visual: ${problem}`);
+  }
+  if (slide.code) {
+    const parsed = codeSchema.safeParse(slide.code);
+    if (!parsed.success) invalid(`${where} code: ${formatIssues(parsed.error)[0]}`);
+  }
 }
 
 export function validateTestQuestion(q: Question) {

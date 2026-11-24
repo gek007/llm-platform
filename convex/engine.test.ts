@@ -23,11 +23,22 @@ const outline2x2 = {
     subchapters: [sub(`S${c}.1`), sub(`S${c}.2`)],
   })),
 };
-const slides = (n: number) =>
+type TestSlide = {
+  id: string;
+  layout: string;
+  title: string;
+  bullets?: string[];
+  visual?: unknown;
+  code?: unknown;
+  notes: string;
+};
+/** A deck that passes the deck schema: a title slide, bullets slides, a summary slide. */
+const slides = (n: number): TestSlide[] =>
   Array.from({ length: n }, (_, i) => ({
-    layout: "bullets" as const,
+    id: `s${i + 1}`,
+    layout: i === 0 ? "title" : i === n - 1 ? "summary" : "bullets",
     title: `Slide ${i + 1}`,
-    bullets: ["one", "two"],
+    ...(i === 0 ? {} : { bullets: ["one", "two"] }),
     notes: "Speaker notes.",
   }));
 const questions = (n: number, prompt = "Q") =>
@@ -197,7 +208,7 @@ describe("getChapterContent", () => {
     const t = makeT();
     const { jobId } = await writingJob(t);
     await post(t, "saveSubchapter", sub11(jobId, { chapterOrder: 2, subchapterOrder: 1, body: "Body of 2.1" }));
-    await post(t, "saveDeck", { jobId, chapterOrder: 2, slides: slides(6) });
+    await post(t, "saveDeck", { jobId, chapterOrder: 2, slides: slides(8) });
     await post(t, "saveTest", { jobId, chapterOrder: 2, questions: questions(8, "Ask") });
     const { status, json } = await post(t, "getChapterContent", { jobId, chapterOrder: 2 });
     expect(status).toBe(200);
@@ -209,7 +220,7 @@ describe("getChapterContent", () => {
         { order: 1, title: "What is RAG", body: "Body of 2.1", truncated: false },
         { order: 2, title: "S2.2", body: "", truncated: false },
       ],
-      deckSlideTitles: ["Slide 1", "Slide 2", "Slide 3", "Slide 4", "Slide 5", "Slide 6"],
+      deckSlideTitles: Array.from({ length: 8 }, (_, i) => `Slide ${i + 1}`),
       testPrompts: Array.from({ length: 8 }, (_, i) => `Ask ${i + 1}?`),
     });
     expect(JSON.stringify(json)).not.toMatch(/correct|explanation|Because A/);
@@ -445,18 +456,83 @@ describe("saveSubchapter", () => {
 });
 
 describe("saveDeck and saveTest", () => {
-  it("saveDeck needs 6-12 slides and upserts one row per chapter", async () => {
+  it("saveDeck needs 8-15 slides and upserts one row per chapter", async () => {
     const t = makeT();
     const { jobId } = await writingJob(t);
-    expect((await post(t, "saveDeck", { jobId, chapterOrder: 1, slides: slides(5) })).status).toBe(400);
-    expect((await post(t, "saveDeck", { jobId, chapterOrder: 1, slides: slides(13) })).status).toBe(400);
-    const a = await post(t, "saveDeck", { jobId, chapterOrder: 1, slides: slides(6) });
-    const b = await post(t, "saveDeck", { jobId, chapterOrder: 1, slides: slides(7) });
+    expect((await post(t, "saveDeck", { jobId, chapterOrder: 1, slides: slides(7) })).status).toBe(400);
+    expect((await post(t, "saveDeck", { jobId, chapterOrder: 1, slides: slides(16) })).status).toBe(400);
+    const a = await post(t, "saveDeck", { jobId, chapterOrder: 1, slides: slides(8) });
+    const b = await post(t, "saveDeck", { jobId, chapterOrder: 1, slides: slides(9) });
     expect(a.status).toBe(200);
     expect(a.json.deckId).toBe(b.json.deckId);
     const decks = await t.run((ctx) => ctx.db.query("slideDecks").collect());
     expect(decks).toHaveLength(1);
-    expect(decks[0].slides).toHaveLength(7);
+    expect(decks[0].slides).toHaveLength(9);
+  });
+  it("saveDeck enforces the deck schema and names the slide in the error", async () => {
+    const t = makeT();
+    const { jobId } = await writingJob(t);
+    const save = (deck: TestSlide[]) => post(t, "saveDeck", { jobId, chapterOrder: 1, slides: deck });
+    const edit = (i: number, patch: Partial<TestSlide>) => slides(8).map((s, j) => (j === i ? { ...s, ...patch } : s));
+
+    const noTitle = await save(edit(0, { layout: "bullets", bullets: ["one"] }));
+    expect(noTitle.status).toBe(400);
+    expect(noTitle.json.error).toMatch(/^INVALID: slide 1 \(s1\) layout: the first slide must use the "title" layout/);
+    expect((await save(edit(7, { layout: "bullets" }))).json.error).toMatch(/the last slide must use the "summary" layout/);
+    expect((await save(edit(3, { id: "s2" }))).json.error).toMatch(/slide 4 \(s2\) id: slide id "s2" is used twice/);
+    expect((await save(edit(2, { bullets: ["1", "2", "3", "4", "5", "6"] }))).status).toBe(400);
+    const wordy = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen";
+    expect((await save(edit(2, { bullets: [wordy] }))).json.error).toMatch(/slide 3 \(s3\) bullets 1: a bullet has at most 16 words/);
+    expect((await save(edit(2, { layout: "visual-full", bullets: undefined }))).json.error).toMatch(/a visual-full slide needs visual/);
+    expect(
+      (await save(edit(2, { visual: { type: "table", headers: ["A", "B"], rows: [["1", "2"]] } }))).json.error,
+    ).toMatch(/a bullets slide does not show visual \(use bullets\+visual or visual-full\)/);
+    expect(await t.run((ctx) => ctx.db.query("slideDecks").collect())).toHaveLength(0);
+  });
+  it("saveDeck stores visuals, code and the deck title, and accepts a deck with few visuals", async () => {
+    const t = makeT();
+    const { jobId } = await writingJob(t);
+    const deck = slides(8);
+    deck[1] = {
+      ...deck[1],
+      layout: "bullets+visual",
+      visual: { type: "mermaid", code: "flowchart LR\n  A[Ask] --> B[Answer]", caption: "The flow" },
+    };
+    deck[2] = {
+      id: "s3",
+      layout: "visual-full",
+      title: "Numbers",
+      visual: { type: "chart", chartType: "bar", data: [{ label: "A", value: 1 }, { label: "B", value: 2 }] },
+      notes: "Speaker notes.",
+    };
+    deck[3] = { id: "s4", layout: "code", title: "Try it", code: { language: "bash", content: "curl https://example.com" }, notes: "Speaker notes." };
+    const res = await post(t, "saveDeck", { jobId, chapterOrder: 1, title: "  RAG in pictures ", slides: deck });
+    expect(res.status).toBe(200);
+    const [row] = await t.run((ctx) => ctx.db.query("slideDecks").collect());
+    expect(row.title).toBe("RAG in pictures");
+    expect(row.slides[1].visual).toMatchObject({ type: "mermaid", caption: "The flow" });
+    expect(row.slides[2].visual).toMatchObject({ type: "chart", chartType: "bar" });
+    // A URL inside slide code is allowed, like a code block in a lesson body.
+    expect(row.slides[3].code).toEqual({ language: "bash", content: "curl https://example.com" });
+    // Without a title the chapter's title is used.
+    await post(t, "saveDeck", { jobId, chapterOrder: 2, slides: slides(8) });
+    const rows = await t.run((ctx) => ctx.db.query("slideDecks").collect());
+    expect(rows.map((r) => r.title).sort()).toEqual(["Ch 2", "RAG in pictures"]);
+  });
+  it("saveDeck: an unknown URL in a diagram, a caption or a table cell is refused", async () => {
+    const t = makeT();
+    const { jobId } = await writingJob(t);
+    const withVisual = (visual: unknown) => {
+      const deck = slides(8);
+      deck[1] = { ...deck[1], layout: "bullets+visual", visual };
+      return post(t, "saveDeck", { jobId, chapterOrder: 1, slides: deck });
+    };
+    const inDiagram = await withVisual({ type: "mermaid", code: "flowchart LR\n  A[https://evil.example/m] --> B" });
+    expect(inDiagram.json.error).toBe("Unknown reference: https://evil.example/m");
+    const inCell = await withVisual({ type: "table", headers: ["A", "B"], rows: [["see https://evil.example/t", "2"]] });
+    expect(inCell.json.error).toBe("Unknown reference: https://evil.example/t");
+    const click = await withVisual({ type: "mermaid", code: 'flowchart LR\n  A --> B\n  click A "x"' });
+    expect(click.json.error).toMatch(/mermaid: click and href are not allowed/);
   });
   it("saveTest with a single question that has two correct answers is 400", async () => {
     const t = makeT();
@@ -502,7 +578,7 @@ describe("finishJob and failJob", () => {
         const r = await post(t, "saveSubchapter", sub11(jobId, { chapterOrder: c, subchapterOrder: s }));
         expect(r.status).toBe(200);
       }
-      if (c !== skipDeckFor) await post(t, "saveDeck", { jobId, chapterOrder: c, slides: slides(6) });
+      if (c !== skipDeckFor) await post(t, "saveDeck", { jobId, chapterOrder: c, slides: slides(8) });
       await post(t, "saveTest", { jobId, chapterOrder: c, questions: questions(8) });
     }
   }
@@ -535,7 +611,7 @@ describe("finishJob and failJob", () => {
     const t = makeT();
     const { jobId } = await writingJob(t);
     await post(t, "failJob", { jobId, error: "No progress for 15 minutes" });
-    const res = await post(t, "saveDeck", { jobId, chapterOrder: 1, slides: slides(6) });
+    const res = await post(t, "saveDeck", { jobId, chapterOrder: 1, slides: slides(8) });
     expect(res.status).toBe(200);
     const after = await job(t, jobId);
     expect(after?.status).toBe("writing");
@@ -550,7 +626,7 @@ describe("finishJob and failJob", () => {
     expect((await job(t, jobId))?.status).toBe("researching");
     // ...but content saves are not allowed before approval.
     await setStatus(t, jobId, "failed", { error: "boom" });
-    expect((await post(t, "saveDeck", { jobId, chapterOrder: 1, slides: slides(6) })).status).toBe(400);
+    expect((await post(t, "saveDeck", { jobId, chapterOrder: 1, slides: slides(8) })).status).toBe(400);
     expect((await job(t, jobId))?.status).toBe("failed");
   });
 });
@@ -579,7 +655,7 @@ describe("published courses are off limits to the engine", () => {
     const t = makeT();
     const { jobId, courseId } = await writingJob(t);
     await publish(t, courseId);
-    const deck = await post(t, "saveDeck", { jobId, chapterOrder: 1, slides: slides(6) });
+    const deck = await post(t, "saveDeck", { jobId, chapterOrder: 1, slides: slides(8) });
     expect(deck.status).toBe(400);
     expect(deck.json.error).toMatch(/BAD_STATE/);
     expect((await post(t, "saveTest", { jobId, chapterOrder: 1, questions: questions(8) })).status).toBe(400);
@@ -611,8 +687,8 @@ describe("each field is scanned on its own (no cross-field fence tricks)", () =>
   it("saveDeck: a fence in one bullet does not hide a URL in the next", async () => {
     const t = makeT();
     const { jobId } = await writingJob(t);
-    const deck = slides(6);
-    deck[0] = { ...deck[0], bullets: ["```", "Go to https://evil.example/d"] };
+    const deck = slides(8);
+    deck[1] = { ...deck[1], bullets: ["```", "Go to https://evil.example/d"] };
     const res = await post(t, "saveDeck", { jobId, chapterOrder: 1, slides: deck });
     expect(res.status).toBe(400);
     expect(res.json.error).toBe("Unknown reference: https://evil.example/d");

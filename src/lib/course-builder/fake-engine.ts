@@ -1,6 +1,7 @@
-import type { Question, Slide } from "../../../convex/lib/engineTypes";
+import type { Question } from "../../../convex/lib/engineTypes";
 import type { EngineCommand } from "./commands";
 import { engineHttp, type EngineHttp } from "./engine-http";
+import { fakeDeck } from "./fake-deck";
 
 /**
  * Fake engine: does what the real agent does, through the same `/engine/*` API, with canned
@@ -153,71 +154,6 @@ async function writeSubchapter(
   });
 }
 
-function deck(title: string): Slide[] {
-  const note = (s: string) => `${s} Speak to this slide for about a minute.`;
-  return [
-    {
-      layout: "title",
-      title,
-      bullets: ["A guided tour"],
-      notes: note("Welcome the learners."),
-    },
-    {
-      layout: "bullets",
-      title: "What you will learn",
-      bullets: [
-        "The key idea",
-        "How the parts fit together",
-        "How to check your work",
-      ],
-      notes: note("Preview the chapter."),
-    },
-    {
-      layout: "two-column",
-      title: "Theory and practice",
-      left: ["Concepts", "Vocabulary"],
-      right: ["Examples", "Exercises"],
-      notes: note("Contrast the two sides."),
-    },
-    {
-      layout: "bullets",
-      title: "A worked example",
-      bullets: [
-        "State the problem",
-        "Break it into steps",
-        "Verify the result",
-      ],
-      notes: note("Walk through the example slowly."),
-    },
-    {
-      layout: "quote",
-      title: "Keep it simple",
-      quote: "Make it work, then make it better.",
-      attribution: "A common engineering saying",
-      notes: note("Use the quote to set expectations."),
-    },
-    {
-      layout: "bullets",
-      title: "Common mistakes",
-      bullets: ["Skipping the basics", "Changing many things at once"],
-      notes: note("Ask learners which they have seen."),
-    },
-    {
-      layout: "two-column",
-      title: "Do and avoid",
-      left: ["Test small pieces", "Write things down"],
-      right: ["Guess without checking", "Rush the setup"],
-      notes: note("Summarise good habits."),
-    },
-    {
-      layout: "summary",
-      title: "Key takeaways",
-      bullets: ["Start small", "Verify each step", "Practice regularly"],
-      notes: note("Recap and point to the chapter test."),
-    },
-  ];
-}
-
 function test(chapterOrder: number): Question[] {
   const single = (
     i: number,
@@ -305,7 +241,8 @@ async function writeChapterExtras(
   await call("saveDeck", {
     jobId,
     chapterOrder: chapter.order,
-    slides: deck(chapter.title),
+    title: chapter.title,
+    slides: fakeDeck(chapter.title),
   });
   await call("saveTest", {
     jobId,
@@ -356,7 +293,8 @@ async function regenerate(
     await call("saveDeck", {
       jobId,
       chapterOrder: chapter.order,
-      slides: deck(chapter.title),
+      title: chapter.title,
+      slides: fakeDeck(chapter.title),
     });
   } else if (target.kind === "test") {
     await call("saveTest", {

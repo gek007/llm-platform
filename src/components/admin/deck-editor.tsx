@@ -30,13 +30,31 @@ const cleanList = (items: string[] | undefined) => (items ?? []).map((s) => s.tr
 
 /** Keeps only the fields the layout uses, so switching layouts never leaves stale content behind. */
 function cleanSlide(slide: SlideData): SlideData {
-  const base = { layout: slide.layout, title: slide.title.trim(), notes: slide.notes.trim() };
+  const base = {
+    ...(slide.id ? { id: slide.id } : {}),
+    layout: slide.layout,
+    title: slide.title.trim(),
+    notes: slide.notes.trim(),
+  };
+  const visual = slide.visual ? { visual: slide.visual } : {};
   switch (slide.layout) {
     case "title":
       return { ...base, bullets: cleanList(slide.bullets).slice(0, 1) };
     case "bullets":
     case "summary":
       return { ...base, bullets: cleanList(slide.bullets) };
+    case "bullets+visual":
+      return { ...base, bullets: cleanList(slide.bullets), ...visual };
+    case "visual-full":
+      return { ...base, ...visual };
+    case "code": {
+      const bullets = cleanList(slide.bullets);
+      return {
+        ...base,
+        ...(slide.code ? { code: { language: slide.code.language.trim(), content: slide.code.content } } : {}),
+        ...(bullets.length > 0 ? { bullets } : {}),
+      };
+    }
     case "two-column":
       return { ...base, left: cleanList(slide.left), right: cleanList(slide.right) };
     case "quote":

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validateQuestion } from "../../../convex/lib/grading";
+import { validateGeneratedDeck } from "../../../convex/lib/deck";
 import type { Question, Slide } from "../../../convex/lib/engineTypes";
 import { runFakeEngine, type EngineCall } from "./fake-engine";
 
@@ -128,9 +129,9 @@ describe("runFakeEngine", () => {
     expect(sub.body as string).not.toMatch(/https?:\/\//);
     for (const d of calls.filter((c) => c.op === "saveDeck")) {
       const slides = d.body.slides as Slide[];
-      expect(slides.length).toBeGreaterThanOrEqual(6);
-      expect(slides.length).toBeLessThanOrEqual(12);
-      expect(new Set(slides.map((s) => s.layout)).size).toBeGreaterThan(2);
+      // The canned deck meets the same rules as a generated one (schema and 40% visuals).
+      expect(validateGeneratedDeck({ title: d.body.title, slides })).toMatchObject({ ok: true });
+      expect(new Set(slides.map((s) => s.layout)).size).toBe(8);
       expect(JSON.stringify(slides)).not.toMatch(/https?:\/\//);
     }
     for (const t of calls.filter((c) => c.op === "saveTest")) {
