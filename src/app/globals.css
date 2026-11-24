@@ -170,3 +170,58 @@ body {
 .hljs-meta { color: #8f84ff; }
 .hljs-emphasis { font-style: italic; }
 .hljs-strong { font-weight: 700; }
+
+/*
+ * Slide deck (src/components/chapter). The app is dark-only; the deck alone can switch to a light
+ * theme (for projecting), by redefining the colour tokens on its own root: every Tailwind colour
+ * utility inside follows. Chart colours are a categorical palette validated per surface
+ * (colour-vision separation and contrast); slices beyond six are refused by the deck schema.
+ */
+.slide-deck {
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #0ca30c;
+}
+.slide-deck[data-theme="light"] {
+  color-scheme: light;
+  --color-bg: #f7f5ef;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1eee6;
+  --color-surface-3: #e7e3d8;
+  --color-line: #dcd7ca;
+  --color-line-strong: #a8a190;
+  --color-fg: #1b1d26;
+  --color-muted: #555b6e;
+  --color-subtle: #6f7589;
+  --color-accent: #c2500a;
+  --color-accent-strong: #a8430a;
+  --color-accent-soft: #9a3d07;
+  --color-accent-fg: #ffffff;
+  --color-iris: #5b4fe0;
+  --color-iris-soft: #4338ca;
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-6: #008300;
+}
+/* Fullscreen: the slide takes the largest 16:9 box that leaves room for the controls. */
+.slide-deck:fullscreen {
+  justify-content: center;
+  padding: 1.5rem;
+  overflow: auto;
+}
+.slide-deck:fullscreen .slide-stage {
+  width: min(100%, calc((100vh - 12rem) * 16 / 9));
+  margin-inline: auto;
+}
+/* Mermaid draws at its own size; the slide gives it a box and the diagram scales into it. */
+.slide-diagram svg {
+  width: 100%;
+  height: 100%;
+  max-width: 100% !important;
+}

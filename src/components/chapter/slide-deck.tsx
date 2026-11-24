@@ -1,26 +1,54 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent } from "react";
-import {
-  RTL_LANGUAGES,
-  type Language,
-  type Slide as SlideData,
-} from "../../../convex/lib/engineTypes";
+import { Progress, ProgressIndicator, ProgressTrack } from "@ui-sdk/react/progress";
+import { useEffect, useRef, useState, type KeyboardEvent, type TouchEvent } from "react";
+import type { RenderableDeck, RenderableSlide } from "../../../convex/lib/deck";
+import { RTL_LANGUAGES, type Language } from "../../../convex/lib/engineTypes";
 import { Button } from "@/components/ui/button";
 import { Toggle } from "@/components/ui/toggle";
+import { DeckThemeContext, useStoredDeckTheme } from "./deck-theme";
 import { Slide } from "./slide";
 
-type SlideDeckProps = { slides: SlideData[]; language: Language; title: string };
+type SlideDeckProps = {
+  /** The deck JSON: `{ chapterId, title, slides }`. Everything shown comes from it. */
+  deck: RenderableDeck;
+  language: Language;
+  /** The deck region's accessible name; defaults to the deck's title. */
+  label?: string;
+};
+
+const VISUAL_NAMES = { mermaid: "Diagram", chart: "Chart", table: "Table", image_prompt: "Illustration" } as const;
+const SWIPE_PX = 48;
+
+function slideKind(slide: RenderableSlide): string | null {
+  if (slide.visual) return VISUAL_NAMES[slide.visual.type];
+  return slide.layout === "code" ? "Code" : slide.layout === "quote" ? "Quote" : null;
+}
 
 /**
- * Arrow keys are handled on the focusable deck region, not on window, so they
- * never hijack arrows elsewhere on the page.
+ * The deck viewer: one slide at a time, with the controls around it. It renders a deck's JSON and
+ * nothing else, so the same JSON can feed another renderer later (a PPTX export, for one).
+ *
+ * Keys are handled on the focusable deck region, not on window, so they never hijack keys
+ * elsewhere on the page: arrows (mirrored in a right-to-left deck), Space and Shift+Space,
+ * PageUp/PageDown, Home/End, and Escape for the overview of all slides.
  */
-export function SlideDeck({ slides, language, title }: SlideDeckProps) {
+export function SlideDeck({ deck, language, label }: SlideDeckProps) {
+  const { slides } = deck;
   const [index, setIndex] = useState(0);
   const [showNotes, setShowNotes] = useState(false);
+  const [overview, setOverview] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [theme, setTheme] = useStoredDeckTheme();
   const region = useRef<HTMLDivElement>(null);
+  const touchStart = useRef<number | null>(null);
   const rtl = RTL_LANGUAGES.includes(language);
+
+  useEffect(() => {
+    const onChange = () => setFullscreen(document.fullscreenElement === region.current);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
 
   if (slides.length === 0) {
     return (
@@ -32,52 +60,150 @@ export function SlideDeck({ slides, language, title }: SlideDeckProps) {
 
   const last = slides.length - 1;
   const current = Math.min(index, last);
-  const go = (delta: number) => setIndex(Math.max(0, Math.min(last, current + delta)));
+  const slide = slides[current];
+  const goTo = (target: number) => setIndex(Math.max(0, Math.min(last, target)));
+  const go = (delta: number) => goTo(current + delta);
 
   function onKeyDown(event: KeyboardEvent) {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    event.preventDefault();
-    const forward = (event.key === "ArrowRight") !== rtl;
-    go(forward ? 1 : -1);
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    const target = event.target as HTMLElement;
+    const onControl = target !== region.current && target.closest("button, a, input, textarea, select") !== null;
+    let handled = true;
+    switch (event.key) {
+      case "ArrowRight":
+      case "ArrowLeft":
+        go((event.key === "ArrowRight") !== rtl ? 1 : -1);
+        break;
+      case "PageDown":
+        go(1);
+        break;
+      case "PageUp":
+        go(-1);
+        break;
+      case "Home":
+        goTo(0);
+        break;
+      case "End":
+        goTo(last);
+        break;
+      case " ":
+        // Space on a button presses that button.
+        if (onControl) return;
+        go(event.shiftKey ? -1 : 1);
+        break;
+      case "Enter":
+        if (onControl || !overview) return;
+        setOverview(false);
+        break;
+      case "Escape":
+        // In fullscreen the browser uses Escape to leave it.
+        if (document.fullscreenElement) return;
+        setOverview((open) => !open);
+        break;
+      default:
+        handled = false;
+    }
+    if (handled) event.preventDefault();
   }
 
-  function fullscreen() {
-    void region.current?.requestFullscreen?.();
+  function toggleFullscreen() {
+    if (document.fullscreenElement) void document.exitFullscreen?.();
+    else void region.current?.requestFullscreen?.();
+  }
+
+  function onTouchEnd(event: TouchEvent) {
+    const start = touchStart.current;
+    touchStart.current = null;
+    const end = event.changedTouches[0]?.clientX;
+    if (start === null || end === undefined || Math.abs(end - start) < SWIPE_PX) return;
+    // Swiping towards the start of the line moves forward, as turning a page does.
+    go((end < start) !== rtl ? 1 : -1);
   }
 
   return (
-    <div
-      ref={region}
-      role="region"
-      aria-label={title}
-      tabIndex={0}
-      onKeyDown={onKeyDown}
-      {...(rtl ? { dir: "rtl", lang: language } : {})}
-      className="flex flex-col gap-4 bg-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-    >
-      <Slide slide={slides[current]} />
-      {showNotes ? (
-        <aside aria-label="Notes" dir="auto" className="rounded-lg border border-line bg-surface-2 p-4 text-sm text-muted">
-          {slides[current].notes}
-        </aside>
-      ) : null}
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="secondary" onClick={() => go(-1)} disabled={current === 0}>
-          Prev
-        </Button>
-        <span aria-live="polite" className="text-sm text-muted">
-          {current + 1} / {slides.length}
-        </span>
-        <Button variant="secondary" onClick={() => go(1)} disabled={current === last}>
-          Next
-        </Button>
-        <Toggle pressed={showNotes} onPressedChange={setShowNotes} className="ms-auto">
-          Speaker notes
-        </Toggle>
-        <Button variant="ghost" onClick={fullscreen}>
-          Fullscreen
-        </Button>
+    <DeckThemeContext value={theme}>
+      <div
+        ref={region}
+        role="region"
+        aria-label={label ?? deck.title}
+        tabIndex={0}
+        onKeyDown={onKeyDown}
+        data-theme={theme}
+        {...(rtl ? { dir: "rtl", lang: language } : {})}
+        className="slide-deck flex flex-col gap-3 rounded-xl bg-bg text-fg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+      >
+        <Progress value={((current + 1) / slides.length) * 100} aria-label="Deck progress">
+          <ProgressTrack className="block h-1 overflow-hidden rounded-full bg-surface-3">
+            <ProgressIndicator className="block h-full rounded-full bg-accent transition-[width] duration-200" />
+          </ProgressTrack>
+        </Progress>
+
+        {overview ? (
+          <ol aria-label="All slides" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            {slides.map((item, i) => {
+              const kind = slideKind(item);
+              return (
+                <li key={item.id}>
+                  <Button
+                    variant="secondary"
+                    aria-current={i === current ? "true" : undefined}
+                    aria-label={`Slide ${i + 1}: ${item.title}`}
+                    onClick={() => {
+                      goTo(i);
+                      setOverview(false);
+                    }}
+                    className="aspect-video h-auto w-full flex-col items-start justify-between p-3 text-start aria-[current=true]:border-accent"
+                  >
+                    <span className="text-xs text-subtle" dir="ltr">
+                      {i + 1}
+                    </span>
+                    <span dir="auto" className="line-clamp-3 text-sm font-semibold">
+                      {item.title}
+                    </span>
+                    <span className="text-xs text-muted">{kind ?? " "}</span>
+                  </Button>
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <div onTouchStart={(e) => (touchStart.current = e.touches[0]?.clientX ?? null)} onTouchEnd={onTouchEnd}>
+            <Slide key={slide.id} slide={slide} />
+          </div>
+        )}
+
+        {showNotes && !overview ? (
+          <aside aria-label="Notes" dir="auto" className="rounded-lg border border-line bg-surface-2 p-4 text-sm text-muted">
+            {slide.notes}
+          </aside>
+        ) : null}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" onClick={() => go(-1)} disabled={current === 0}>
+            Prev
+          </Button>
+          <span aria-live="polite" className="min-w-14 text-center text-sm text-muted" dir="ltr">
+            {current + 1} / {slides.length}
+          </span>
+          <Button variant="secondary" onClick={() => go(1)} disabled={current === last}>
+            Next
+          </Button>
+          <div className="ms-auto flex flex-wrap items-center gap-2">
+            <Toggle pressed={overview} onPressedChange={setOverview}>
+              Overview
+            </Toggle>
+            <Toggle pressed={showNotes} onPressedChange={setShowNotes}>
+              Speaker notes
+            </Toggle>
+            <Toggle pressed={theme === "light"} onPressedChange={(light) => setTheme(light ? "light" : "dark")}>
+              Light slides
+            </Toggle>
+            <Button variant="ghost" onClick={toggleFullscreen}>
+              {fullscreen ? "Exit fullscreen" : "Fullscreen"}
+            </Button>
+          </div>
+        </div>
       </div>
-    </div>
+    </DeckThemeContext>
   );
 }
