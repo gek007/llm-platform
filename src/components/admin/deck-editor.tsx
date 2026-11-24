@@ -4,6 +4,7 @@ import { useMutation } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { formatIssues, visualProblems, visualSchema } from "../../../convex/lib/deck";
 import { HAND_EDIT } from "../../../convex/lib/handEditLimits";
 import type { Slide as SlideData } from "../../../convex/lib/engineTypes";
 import { Slide } from "@/components/chapter/slide";
@@ -16,10 +17,14 @@ import { useAdminQuery } from "./use-admin-query";
 import { useServerSync } from "./use-server-sync";
 
 type Layout = SlideData["layout"];
+type Visual = NonNullable<SlideData["visual"]>;
 const layouts: { value: Layout; label: string }[] = [
   { value: "title", label: "Title" },
   { value: "bullets", label: "Bullets" },
+  { value: "bullets+visual", label: "Bullets + visual" },
+  { value: "visual-full", label: "Full visual" },
   { value: "two-column", label: "Two columns" },
+  { value: "code", label: "Code" },
   { value: "quote", label: "Quote" },
   { value: "summary", label: "Summary" },
 ];
@@ -27,6 +32,59 @@ const layouts: { value: Layout; label: string }[] = [
 const lines = (items: string[] | undefined) => (items ?? []).join("\n");
 const toList = (text: string) => text.split("\n");
 const cleanList = (items: string[] | undefined) => (items ?? []).map((s) => s.trim()).filter(Boolean);
+
+const STARTER_VISUAL: Visual = { type: "mermaid", code: "flowchart LR\n  A[Start] --> B[End]" };
+
+/** A slide moved to a layout that needs a visual or code gets a starter one to edit. */
+function withLayout(slide: SlideData, layout: Layout): SlideData {
+  const next = { ...slide, layout };
+  if ((layout === "bullets+visual" || layout === "visual-full") && !next.visual) next.visual = STARTER_VISUAL;
+  if (layout === "code" && !next.code) next.code = { language: "text", content: "" };
+  return next;
+}
+
+function freeSlideId(slides: SlideData[]): string {
+  const taken = new Set(slides.map((s) => s.id));
+  let n = slides.length + 1;
+  while (taken.has(`slide-${n}`)) n++;
+  return `slide-${n}`;
+}
+
+/**
+ * The slide's visual as JSON (the deck schema's `visual`: mermaid, chart, table or image_prompt).
+ * The slide only takes a value that parses and passes the schema, so the preview never sees a
+ * half-typed one; until then the field says what is wrong.
+ */
+function VisualField({ value, onChange }: { value: Visual | undefined; onChange: (visual: Visual) => void }) {
+  const [text, setText] = useState(() => JSON.stringify(value ?? STARTER_VISUAL, null, 2));
+  const [problem, setProblem] = useState<string>();
+
+  function edit(next: string) {
+    setText(next);
+    let data: unknown;
+    try {
+      data = JSON.parse(next);
+    } catch {
+      setProblem("Not valid JSON yet.");
+      return;
+    }
+    const parsed = visualSchema.safeParse(data);
+    const issue = parsed.success ? visualProblems(parsed.data)[0] : formatIssues(parsed.error)[0];
+    setProblem(issue);
+    if (parsed.success && !issue) onChange(parsed.data);
+  }
+
+  return (
+    <FormField
+      label="Visual (JSON)"
+      htmlFor="slide-visual"
+      hint='One of: {"type":"mermaid","code":…,"caption"?}, {"type":"chart","chartType":"bar"|"line"|"pie","data":[{"label","value"}],"caption"?}, {"type":"table","headers":[…],"rows":[[…]]}, {"type":"image_prompt","prompt","alt"}.'
+      error={problem}
+    >
+      <Textarea id="slide-visual" dir="ltr" rows={9} spellCheck={false} className="font-mono" value={text} onChange={(e) => edit(e.target.value)} />
+    </FormField>
+  );
+}
 
 /** Keeps only the fields the layout uses, so switching layouts never leaves stale content behind. */
 function cleanSlide(slide: SlideData): SlideData {
@@ -157,7 +215,7 @@ function DeckForm({ chapterId, language, server, paused }: { chapterId: Id<"chap
             </li>
           ))}
           <li>
-            <Button type="button" variant="secondary" disabled={slides.length >= maxSlides} onClick={() => edit([...slides, { layout: "bullets", title: "New slide", bullets: ["Point"], notes: "Notes" }], slides.length)}>
+            <Button type="button" variant="secondary" disabled={slides.length >= maxSlides} onClick={() => edit([...slides, { id: freeSlideId(slides), layout: "bullets", title: "New slide", bullets: ["Point"], notes: "Notes" }], slides.length)}>
               Add slide
             </Button>
           </li>
@@ -167,7 +225,7 @@ function DeckForm({ chapterId, language, server, paused }: { chapterId: Id<"chap
           <div className="flex flex-col gap-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <FormField label="Layout" htmlFor="slide-layout">
-                <SelectField id="slide-layout" options={layouts} value={current.layout} onChange={(e) => patch({ layout: e.target.value as Layout })} />
+                <SelectField id="slide-layout" options={layouts} value={current.layout} onChange={(e) => edit(slides.map((s, i) => (i === index ? withLayout(s, e.target.value as Layout) : s)))} />
               </FormField>
               <FormField label="Title" htmlFor="slide-title">
                 <Input id="slide-title" dir="auto" value={current.title} onChange={(e) => patch({ title: e.target.value })} />
@@ -178,10 +236,23 @@ function DeckForm({ chapterId, language, server, paused }: { chapterId: Id<"chap
                 <Input id="slide-subtitle" dir="auto" value={current.bullets?.[0] ?? ""} onChange={(e) => patch({ bullets: [e.target.value] })} />
               </FormField>
             ) : null}
-            {current.layout === "bullets" || current.layout === "summary" ? (
-              <FormField label="Bullets (one per line)" htmlFor="slide-bullets">
-                <Textarea id="slide-bullets" dir="auto" rows={5} value={lines(current.bullets)} onChange={(e) => patch({ bullets: toList(e.target.value) })} />
+            {current.layout === "code" ? (
+              <>
+                <FormField label="Language" htmlFor="slide-code-language">
+                  <Input id="slide-code-language" dir="ltr" value={current.code?.language ?? ""} onChange={(e) => patch({ code: { language: e.target.value, content: current.code?.content ?? "" } })} />
+                </FormField>
+                <FormField label="Code" htmlFor="slide-code" hint="At most 18 lines.">
+                  <Textarea id="slide-code" dir="ltr" rows={6} spellCheck={false} className="font-mono" value={current.code?.content ?? ""} onChange={(e) => patch({ code: { language: current.code?.language ?? "text", content: e.target.value } })} />
+                </FormField>
+              </>
+            ) : null}
+            {current.layout === "bullets" || current.layout === "summary" || current.layout === "bullets+visual" || current.layout === "code" ? (
+              <FormField label={current.layout === "code" ? "Bullets (optional, one per line)" : "Bullets (one per line)"} htmlFor="slide-bullets">
+                <Textarea id="slide-bullets" dir="auto" rows={current.layout === "code" ? 2 : 5} value={lines(current.bullets)} onChange={(e) => patch({ bullets: toList(e.target.value) })} />
               </FormField>
+            ) : null}
+            {current.layout === "bullets+visual" || current.layout === "visual-full" ? (
+              <VisualField key={`${index}:${current.id ?? ""}`} value={current.visual} onChange={(visual) => patch({ visual })} />
             ) : null}
             {current.layout === "two-column" ? (
               <div className="grid gap-4 sm:grid-cols-2">
