@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { LessonOutline, type OutlineLesson } from "@/components/course/lesson-outline";
+import { LessonOutline, type OutlineChapter, type OutlineLesson } from "@/components/course/lesson-outline";
 import { MenuIcon } from "@/components/course/icons";
 import { Button } from "@/components/ui/button";
 
@@ -10,12 +10,14 @@ type Props = {
   courseSlug: string;
   courseTitle: string;
   lessons: OutlineLesson[];
+  /** A chaptered course groups its lessons by chapter, each chapter starting with its slides. */
+  chapters?: OutlineChapter[];
   completedIds: readonly string[];
   currentSlug: string;
 };
 
 /** Always visible on large screens; a collapsible panel below `lg`. */
-export function LessonSidebar({ courseSlug, courseTitle, lessons, completedIds, currentSlug }: Props) {
+export function LessonSidebar({ courseSlug, courseTitle, lessons, chapters, completedIds, currentSlug }: Props) {
   const [open, setOpen] = useState(false);
   const done = lessons.filter((l) => completedIds.includes(l._id)).length;
   return (
@@ -40,6 +42,7 @@ export function LessonSidebar({ courseSlug, courseTitle, lessons, completedIds, 
         <LessonOutline
           courseSlug={courseSlug}
           lessons={lessons}
+          chapters={chapters}
           completedIds={completedIds}
           currentSlug={currentSlug}
           compact

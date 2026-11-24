@@ -2,7 +2,7 @@
 
 import { useQuery } from "convex/react";
 import Link from "next/link";
-import { lessonHref } from "@/components/course/format";
+import { chapterHref, lessonHref } from "@/components/course/format";
 import { api } from "../../../convex/_generated/api";
 import { CourseCard } from "./course-card";
 import { CatalogSkeleton } from "./course-catalog";
@@ -33,7 +33,12 @@ export function DashboardCourses() {
             course={{
               ...course,
               complete: course.complete,
-              continueHref: course.nextLessonSlug ? lessonHref(course.slug, course.nextLessonSlug) : `/courses/${course.slug}`,
+              // A chapter the learner is about to start opens with its slides.
+              continueHref: course.nextChapterSlug
+                ? chapterHref(course.slug, course.nextChapterSlug)
+                : course.nextLessonSlug
+                  ? lessonHref(course.slug, course.nextLessonSlug)
+                  : `/courses/${course.slug}`,
             }}
           />
         </li>

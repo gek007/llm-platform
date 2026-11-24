@@ -346,7 +346,7 @@ Defined in `convex/schema.ts`; seed data in `convex/lib/seedData.ts` (`npx conve
 | `courses` | `listPublished`, `getBySlug` (outline with `locked`, no bodies; `language` and `chapters` with `hasDeck`/`test`) |
 | `lessons` | `getForViewer` (body and playback ID only when unlocked; `prev`/`next`; `language`, `chapter`, `sources`) |
 | `chapters` | `getForViewer` (deck as `{ chapterId, title, slides, updatedAt }` only when unlocked, the course's `chapters` with `hasDeck`, `generation` state for admins, lessons, test summary with best score and attempts, `prev`/`next`) |
-| `enrollments` | `enroll` (`PRO_REQUIRED` error), `isEnrolled`, `listMine` |
+| `enrollments` | `enroll` (`PRO_REQUIRED` error), `isEnrolled`, `listMine` (with `nextLessonSlug` and, when the learner is about to start a chapter that has slides, `nextChapterSlug`) |
 | `progress` | `setComplete`, `forCourse` |
 | `users`, `viewer` | `store` (upsert on sign-in), `get` (`signedIn`, `isAdmin`, `isPro`, `user`) |
 | `playback` | `getLessonTokens` (action): signed Mux tokens after an access check; `null` when locked or no ready video |

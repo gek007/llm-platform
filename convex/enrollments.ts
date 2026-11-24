@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { completionFor } from "./lib/completion";
+import { chapterToStart } from "./lib/coursePath";
 import { getIdentity, getViewerState, requireUser } from "./lib/auth";
 
 export const enroll = mutation({
@@ -62,6 +63,23 @@ export const listMine = query({
         const c = await completionFor(ctx, userId, course._id);
         const { lessons, done } = c;
         const next = lessons.find((l) => !done.has(l._id)) ?? lessons[0];
+        // Slides first: when the next lesson starts a chapter that has a deck, the card leads to
+        // the chapter page (deck on top) instead of the lesson.
+        const chapterRows = await ctx.db
+          .query("chapters")
+          .withIndex("by_course_order", (q) => q.eq("courseId", course._id))
+          .collect();
+        const chapters = await Promise.all(
+          chapterRows.map(async (chapter) => ({
+            slug: chapter.slug,
+            lessonIds: lessons.filter((l) => l.chapterId === chapter._id).map((l) => l._id as string),
+            hasDeck:
+              (await ctx.db
+                .query("slideDecks")
+                .withIndex("by_chapter", (q) => q.eq("chapterId", chapter._id))
+                .first()) !== null,
+          })),
+        );
         return {
           ...course,
           enrolledAt: enrollment.enrolledAt,
@@ -71,6 +89,7 @@ export const listMine = query({
           testCount: c.testCount,
           complete: c.complete,
           nextLessonSlug: next?.slug ?? null,
+          nextChapterSlug: chapterToStart(next?._id, chapters, done as ReadonlySet<string>),
         };
       }),
     );

@@ -34,13 +34,33 @@ describe("LessonOutline", () => {
     ];
     render(<LessonOutline courseSlug="c" lessons={lessons} completedIds={[]} chapters={chapters} />);
     const first = screen.getByRole("region", { name: "Basics" });
-    expect(within(first).getByRole("link", { name: /Basics/ })).toHaveAttribute("href", "/courses/c/chapters/chapter-1");
+    expect(within(first).getByRole("link", { name: "1. Basics" })).toHaveAttribute("href", "/courses/c/chapters/chapter-1");
     expect(within(first).getAllByRole("listitem")).toHaveLength(2);
-    expect(within(first).getByText("Slides")).toBeInTheDocument();
     expect(within(first).getByRole("link", { name: "Chapter test" })).toHaveAttribute("href", "/courses/c/chapters/chapter-1/test");
     const second = screen.getByRole("region", { name: "Advanced" });
     expect(within(second).getAllByRole("listitem")).toHaveLength(1);
     expect(within(second).queryByRole("link", { name: "Chapter test" })).toBeNull();
+  });
+
+  test("a chapter with a deck starts with a link to its slides, before its lessons", () => {
+    const chapters: OutlineChapter[] = [
+      { _id: "c1", slug: "chapter-1", title: "Basics", summary: "", order: 1, lessonIds: ["l1", "l2"], hasDeck: true, test: null },
+      { _id: "c2", slug: "chapter-2", title: "Advanced", summary: "", order: 2, lessonIds: ["l3"], hasDeck: false, test: null },
+    ];
+    const { rerender } = render(<LessonOutline courseSlug="c" lessons={lessons} completedIds={[]} chapters={chapters} />);
+    const first = screen.getByRole("region", { name: "Basics" });
+    const slides = within(first).getByRole("link", { name: "Slides: Basics" });
+    expect(slides).toHaveAttribute("href", "/courses/c/chapters/chapter-1#deck-heading");
+    expect(slides).toHaveTextContent("Start here");
+    // It comes before the chapter's first lesson.
+    const firstLesson = within(first).getByRole("link", { name: /Intro/ });
+    expect(slides.compareDocumentPosition(firstLesson) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // A chapter without a deck has no slides link.
+    expect(within(screen.getByRole("region", { name: "Advanced" })).queryByRole("link", { name: /^Slides/ })).toBeNull();
+
+    // In the lesson sidebar the current lesson's chapter is marked.
+    rerender(<LessonOutline courseSlug="c" lessons={lessons} completedIds={[]} chapters={chapters} currentSlug="deep" compact />);
+    expect(screen.getByRole("link", { name: "Slides: Basics" })).toHaveTextContent("This chapter");
   });
 
   test("an empty chapters array renders the flat list", () => {

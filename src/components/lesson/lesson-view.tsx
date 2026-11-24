@@ -18,6 +18,7 @@ export function LessonView({ courseSlug, lessonSlug }: { courseSlug: string; les
     <LessonPlayer
       data={data}
       outline={course.lessons}
+      chapters={course.chapters}
       completedIds={completed ?? []}
       signedIn={viewer.signedIn}
     />

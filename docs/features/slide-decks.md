@@ -102,7 +102,7 @@ If the parser itself cannot load, the diagrams are kept unchecked, the activity 
 | No deck, admin, generation `ready` | Error with "Regenerate chapter slides" (rebuilds this chapter's deck from its saved lessons) |
 | No deck otherwise (hand-made or older chapter) | A pointer to the chapter's lessons, the text view |
 
-Lessons were not replaced: tests, sources and practice quizzes depend on them, and they are the fallback when a chapter has no deck.
+Lessons were not replaced: tests, sources and practice quizzes depend on them, and they are the fallback when a chapter has no deck. But the deck comes first: Start, Continue, the course outline, the lesson sidebar, the lesson header and "Next" across a chapter boundary all lead to the chapter's slides (see "Slides first" in [course-engine.md](course-engine.md)), and the chapter page lists the lessons under the deck as the full text behind it.
 
 ## Sample deck
 

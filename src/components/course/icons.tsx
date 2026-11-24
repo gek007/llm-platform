@@ -29,6 +29,15 @@ export function LockIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function SlidesIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M12 16v4M8 20h8" />
+    </Icon>
+  );
+}
+
 export function VideoIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Icon {...props}>

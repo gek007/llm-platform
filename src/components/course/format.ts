@@ -15,6 +15,15 @@ export function lessonHref(courseSlug: string, lessonSlug: string): string {
   return `/courses/${courseSlug}/lessons/${lessonSlug}`;
 }
 
+export function chapterHref(courseSlug: string, chapterSlug: string): string {
+  return `/courses/${courseSlug}/chapters/${chapterSlug}`;
+}
+
+/** A chapter's slides: the chapter page, scrolled to its deck. */
+export function slidesHref(courseSlug: string, chapterSlug: string): string {
+  return `${chapterHref(courseSlug, chapterSlug)}#deck-heading`;
+}
+
 export function signInHref(returnTo: string): string {
   return `/sign-in?redirect_url=${encodeURIComponent(returnTo)}`;
 }

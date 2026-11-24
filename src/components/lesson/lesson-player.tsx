@@ -1,15 +1,18 @@
 "use client";
 
 import type { FunctionReturnType } from "convex/server";
-import { formatDuration, stripLeadingTitle } from "@/components/course/format";
+import Link from "next/link";
+import { chapterHref, formatDuration, slidesHref, stripLeadingTitle } from "@/components/course/format";
 import { PreviewBadge } from "@/components/course/badges";
-import type { OutlineLesson } from "@/components/course/lesson-outline";
+import { SlidesIcon } from "@/components/course/icons";
+import type { OutlineChapter, OutlineLesson } from "@/components/course/lesson-outline";
 import { LessonMarkdown } from "@/components/markdown/lesson-markdown";
 import { LessonVideo } from "@/components/video/lesson-video";
 import type { api } from "../../../convex/_generated/api";
+import { chapterOfLesson } from "../../../convex/lib/coursePath";
 import { CompleteToggle } from "./complete-toggle";
 import { LessonSources } from "./lesson-sources";
-import { LessonNav } from "./lesson-nav";
+import { LessonNav, type NavTarget } from "./lesson-nav";
 import { LessonSidebar } from "./lesson-sidebar";
 import { LockedLesson } from "./locked-lesson";
 
@@ -18,17 +21,34 @@ export type LessonData = NonNullable<FunctionReturnType<typeof api.lessons.getFo
 type Props = {
   data: LessonData;
   outline: OutlineLesson[];
+  /** The course's chapters (empty for a course without chapters). */
+  chapters?: OutlineChapter[];
   completedIds: readonly string[];
   signedIn: boolean;
 };
 
-export function LessonPlayer({ data, outline, completedIds, signedIn }: Props) {
+export function LessonPlayer({ data, outline, chapters = [], completedIds, signedIn }: Props) {
   // A deployment that predates the course engine returns no `language` or `sources`;
   // default both so the page still renders against an older backend.
   const { course, lesson, locked, prev, next, language = "en", sources = [] } = data;
   const returnTo = `/courses/${course.slug}/lessons/${lesson.slug}`;
   const completed = completedIds.includes(lesson._id);
   const body = "body" in lesson ? lesson.body : undefined;
+
+  // Slides first: the lesson says which chapter it belongs to and links to that chapter's deck, and
+  // "Next" from a chapter's last lesson opens the next chapter's slides, not its first lesson.
+  const chapter = chapterOfLesson(lesson._id, chapters);
+  const nextLesson = next ? outline.find((l) => l.slug === next.slug) : undefined;
+  const nextChapter = nextLesson ? chapterOfLesson(nextLesson._id, chapters) : undefined;
+  const nextTarget: NavTarget | null =
+    next && nextChapter && nextChapter !== chapter && nextChapter.hasDeck
+      ? {
+          ...next,
+          title: nextChapter.title,
+          href: slidesHref(course.slug, nextChapter.slug),
+          kicker: `Next: chapter ${nextChapter.order} slides`,
+        }
+      : next;
 
   return (
     <div
@@ -40,11 +60,28 @@ export function LessonPlayer({ data, outline, completedIds, signedIn }: Props) {
         courseSlug={course.slug}
         courseTitle={course.title}
         lessons={outline}
+        chapters={chapters}
         completedIds={completedIds}
         currentSlug={lesson.slug}
       />
       <article className="min-w-0">
         <header className="mb-6">
+          {chapter ? (
+            <p className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+              <Link href={chapterHref(course.slug, chapter.slug)} className="text-muted hover:text-fg hover:underline">
+                Chapter {chapter.order}: <span dir="auto">{chapter.title}</span>
+              </Link>
+              {chapter.hasDeck ? (
+                <Link
+                  href={slidesHref(course.slug, chapter.slug)}
+                  className="inline-flex items-center gap-1.5 font-medium text-accent-soft hover:underline"
+                >
+                  <SlidesIcon width={14} height={14} />
+                  Chapter slides
+                </Link>
+              ) : null}
+            </p>
+          ) : null}
           <p className="flex flex-wrap items-center gap-2 text-xs text-subtle">
             <span>Lesson {lesson.order}</span>
             <span aria-hidden="true">·</span>
@@ -84,7 +121,7 @@ export function LessonPlayer({ data, outline, completedIds, signedIn }: Props) {
             </div>
           </>
         )}
-        <LessonNav courseSlug={course.slug} prev={prev} next={next} />
+        <LessonNav courseSlug={course.slug} prev={prev} next={nextTarget} />
       </article>
     </div>
   );
