@@ -108,12 +108,34 @@ test.describe("slide deck viewer", () => {
       await page.setViewportSize(viewport);
       for (let n = 1; n <= 14; n++) {
         await goToSlide(page, n);
-        expect(await spill(page), `slide ${n}`).toEqual([]);
+        // Auto-scaling applies a frame after the slide mounts: check the settled slide.
+        await expect.poll(() => spill(page), { message: `slide ${n}` }).toEqual([]);
       }
       // Nothing in this deck is long enough to be cut off: auto-scaling was enough everywhere.
       expect(clipped).toEqual([]);
     });
   }
+
+  test("fullscreen: the slide and its controls fit the screen, keys still work, and the button leaves it", async ({ page }) => {
+    await deck(page).getByRole("button", { name: "Fullscreen" }).click();
+    const exit = deck(page).getByRole("button", { name: "Exit fullscreen" });
+    await expect(exit).toBeVisible();
+    expect(await page.evaluate(() => document.fullscreenElement?.classList.contains("slide-deck"))).toBe(true);
+    const viewport = page.viewportSize()!;
+    const frame = (await deck(page).locator(".slide-stage > div").boundingBox())!;
+    const controls = (await exit.boundingBox())!;
+    expect(frame.y).toBeGreaterThanOrEqual(0);
+    expect(frame.x + frame.width).toBeLessThanOrEqual(viewport.width);
+    expect(controls.y + controls.height).toBeLessThanOrEqual(viewport.height);
+    // The slide grows with the screen: it is wider than the inline deck's column.
+    expect(frame.width).toBeGreaterThan(900);
+    await expect.poll(() => spill(page)).toEqual([]);
+    await page.keyboard.press("ArrowRight");
+    await expect(counter(page)).toHaveText("2 / 14");
+    await exit.click();
+    await expect(deck(page).getByRole("button", { name: "Fullscreen", exact: true })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+  });
 
   test("a phone gets the 3:4 frame and stacked columns", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
