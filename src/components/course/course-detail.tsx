@@ -4,8 +4,9 @@ import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { notFound } from "next/navigation";
 import { LessonMarkdown } from "@/components/markdown/lesson-markdown";
-import { formatDuration, lessonHref } from "@/components/course/format";
+import { chapterHref, formatDuration, lessonHref } from "@/components/course/format";
 import { api } from "../../../convex/_generated/api";
+import { chapterToStart } from "../../../convex/lib/coursePath";
 import { LevelBadge, TierBadge } from "./badges";
 import { EnrollButton } from "./enroll-button";
 import { LessonOutline } from "./lesson-outline";
@@ -31,7 +32,13 @@ function CourseDetailLoaded({ course }: { course: Course }) {
   const previews = course.lessons.filter((l) => l.isFreePreview).length;
   const nextLesson =
     course.lessons.find((l) => !done.has(l._id) && !l.locked) ?? course.lessons.find((l) => !l.locked) ?? course.lessons[0];
-  const continueHref = nextLesson ? lessonHref(course.slug, nextLesson.slug) : `/courses/${course.slug}`;
+  // Slides first: about to start a chapter that has a deck → its chapter page; otherwise the lesson.
+  const startChapter = nextLesson?.locked ? null : chapterToStart(nextLesson?._id, course.chapters, done);
+  const continueHref = startChapter
+    ? chapterHref(course.slug, startChapter)
+    : nextLesson
+      ? lessonHref(course.slug, nextLesson.slug)
+      : `/courses/${course.slug}`;
   const completedCount = course.lessons.filter((l) => done.has(l._id)).length;
 
   return (
@@ -102,7 +109,7 @@ function CourseDetailLoaded({ course }: { course: Course }) {
         </div>
         <section aria-labelledby="outline-heading">
           <h2 id="outline-heading" className="mb-4 font-display text-2xl font-semibold">
-            Lessons
+            {course.chapters.length > 0 ? "Chapters" : "Lessons"}
           </h2>
           <LessonOutline
             courseSlug={course.slug}

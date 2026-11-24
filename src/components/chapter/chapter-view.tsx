@@ -98,7 +98,7 @@ function ChapterDeck({ data, signedIn }: { data: ChapterData; signedIn: boolean 
 }
 
 export function ChapterView({ data, signedIn }: { data: ChapterData; signedIn: boolean }) {
-  const { course, chapter, chapters, lessons, test, prev, next } = data;
+  const { course, chapter, chapters, deck, lessons, test, prev, next } = data;
   const base = `/courses/${course.slug}`;
   const language = course.language as Language;
   const rtl = RTL_LANGUAGES.includes(language);
@@ -135,9 +135,14 @@ export function ChapterView({ data, signedIn }: { data: ChapterData; signedIn: b
         </section>
 
         <section aria-labelledby="chapter-lessons-heading">
-          <h2 id="chapter-lessons-heading" className="mb-3 scroll-mt-6 font-display text-xl font-semibold">
+          <h2 id="chapter-lessons-heading" className="scroll-mt-6 font-display text-xl font-semibold">
             Lessons
           </h2>
+          <p className="mt-1 mb-3 text-sm text-muted">
+            {deck
+              ? "Go deeper: the full text behind these slides, with practice quizzes and sources."
+              : "The full text of this chapter, with practice quizzes and sources."}
+          </p>
           <ol aria-label="Chapter lessons" className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
             {lessons.map((lesson) => (
               <li key={lesson.slug} {...contentDir}>

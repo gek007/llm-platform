@@ -21,6 +21,7 @@ import type * as lib_access from "../lib/access.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_completion from "../lib/completion.js";
 import type * as lib_contentValidation from "../lib/contentValidation.js";
+import type * as lib_coursePath from "../lib/coursePath.js";
 import type * as lib_deck from "../lib/deck.js";
 import type * as lib_engineAuth from "../lib/engineAuth.js";
 import type * as lib_engineTypes from "../lib/engineTypes.js";
@@ -64,6 +65,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/completion": typeof lib_completion;
   "lib/contentValidation": typeof lib_contentValidation;
+  "lib/coursePath": typeof lib_coursePath;
   "lib/deck": typeof lib_deck;
   "lib/engineAuth": typeof lib_engineAuth;
   "lib/engineTypes": typeof lib_engineTypes;

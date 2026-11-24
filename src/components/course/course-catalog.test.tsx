@@ -58,4 +58,13 @@ describe("DashboardCourses", () => {
       "/courses/react-server-components/lessons/the-client-boundary",
     );
   });
+
+  test("a chapter the learner is about to start opens with its slides", () => {
+    useQuery.mockReturnValue([{ ...course, completedCount: 0, nextLessonSlug: "lesson-1-1", nextChapterSlug: "chapter-1" }]);
+    render(<DashboardCourses />);
+    expect(screen.getByRole("link", { name: /Start/ })).toHaveAttribute(
+      "href",
+      "/courses/react-server-components/chapters/chapter-1",
+    );
+  });
 });

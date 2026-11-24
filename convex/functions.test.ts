@@ -176,6 +176,33 @@ describe("enrollment and progress", () => {
     await asUser(t, proClaims).mutation(api.enrollments.enroll, { courseId: proCourse._id });
   });
 
+  it("listMine leads to a chapter's slides when the learner is about to start that chapter", async () => {
+    const t = makeT();
+    await t.mutation(internal.seed.run, {});
+    const course = (await asUser(t).query(api.courses.getBySlug, { slug: "digital-safety-basics" }))!;
+    const [first, second, third] = course.lessons;
+    await asUser(t).mutation(api.enrollments.enroll, { courseId: course._id });
+    const mine = async () => (await asUser(t).query(api.enrollments.listMine, {}))[0];
+
+    // Nothing done: the course starts with chapter 1's deck.
+    expect(await mine()).toMatchObject({ nextLessonSlug: first.slug, nextChapterSlug: "chapter-1" });
+    // Mid-chapter: straight to the next lesson.
+    await asUser(t).mutation(api.progress.setComplete, { lessonId: first._id, complete: true });
+    expect(await mine()).toMatchObject({ nextLessonSlug: second.slug, nextChapterSlug: null });
+    // Chapter 1 finished: chapter 2 opens with its deck.
+    await asUser(t).mutation(api.progress.setComplete, { lessonId: second._id, complete: true });
+    expect(await mine()).toMatchObject({ nextLessonSlug: third.slug, nextChapterSlug: "chapter-2" });
+  });
+
+  it("a course without chapters has no chapter to start", async () => {
+    const t = makeT();
+    await t.mutation(internal.seed.run, {});
+    const course = (await t.query(api.courses.getBySlug, { slug: "typescript-foundations" }))!;
+    await asUser(t).mutation(api.enrollments.enroll, { courseId: course._id });
+    const [mine] = await asUser(t).query(api.enrollments.listMine, {});
+    expect(mine.nextChapterSlug).toBeNull();
+  });
+
   it("marks lessons complete, auto-enrolls, reports progress, and blocks locked lessons", async () => {
     const t = makeT();
     await t.mutation(internal.seed.run, {});

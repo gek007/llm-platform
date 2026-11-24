@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { formatDuration, lessonHref } from "@/components/course/format";
+import { chapterHref, formatDuration, lessonHref, slidesHref } from "@/components/course/format";
 import { PreviewBadge } from "./badges";
-import { CheckIcon, LockIcon, VideoIcon } from "./icons";
+import { CheckIcon, LockIcon, SlidesIcon, VideoIcon } from "./icons";
 
 export type OutlineLesson = {
   _id: string;
@@ -44,7 +44,8 @@ export function LessonOutline({ courseSlug, lessons, completedIds, currentSlug, 
       <div aria-label={label} role="group" className="space-y-4">
         {chapters.map((chapter) => {
           const chapterLessons = lessons.filter((l) => chapter.lessonIds.includes(l._id));
-          const chapterHref = `/courses/${courseSlug}/chapters/${chapter.slug}`;
+          const href = chapterHref(courseSlug, chapter.slug);
+          const here = currentSlug !== undefined && chapterLessons.some((l) => l.slug === currentSlug);
           return (
             <section
               key={chapter._id}
@@ -53,18 +54,31 @@ export function LessonOutline({ courseSlug, lessons, completedIds, currentSlug, 
             >
               <header className="border-b border-line bg-surface-2 px-4 py-3">
                 <h3 className="font-display text-base font-semibold" dir="auto">
-                  <Link href={chapterHref} className="hover:underline focus-visible:outline-2 focus-visible:outline-accent">
+                  <Link href={href} className="hover:underline focus-visible:outline-2 focus-visible:outline-accent">
                     {chapter.order}. {chapter.title}
                   </Link>
                 </h3>
                 <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-subtle">
-                  {chapter.hasDeck ? <span>Slides</span> : null}
                   <span>
                     {chapterLessons.length} {chapterLessons.length === 1 ? "lesson" : "lessons"}
                   </span>
                   {chapter.test ? <span>Test ({chapter.test.questionCount} questions)</span> : null}
                 </p>
               </header>
+              {chapter.hasDeck ? (
+                // A chapter opens with its slides; the lessons under it are the reading that follows.
+                <Link
+                  href={slidesHref(courseSlug, chapter.slug)}
+                  aria-label={`Slides: ${chapter.title}`}
+                  className={`flex items-center gap-3 border-b border-line px-4 ${compact ? "py-2.5" : "py-3.5"} text-sm font-medium text-accent-soft transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent`}
+                >
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
+                    <SlidesIcon width={14} height={14} />
+                  </span>
+                  <span className="flex-1">Slides</span>
+                  <span className="text-xs font-normal text-subtle">{here ? "This chapter" : "Start here"}</span>
+                </Link>
+              ) : null}
               <Rows
                 courseSlug={courseSlug}
                 lessons={chapterLessons}
@@ -76,7 +90,7 @@ export function LessonOutline({ courseSlug, lessons, completedIds, currentSlug, 
               />
               {chapter.test ? (
                 <Link
-                  href={`${chapterHref}/test`}
+                  href={`${href}/test`}
                   className="block border-t border-line px-4 py-3 text-sm font-medium text-accent hover:bg-surface-2"
                 >
                   Chapter test
