@@ -1,5 +1,6 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { checkDeckDraft, DECK_RULES, deckTexts } from "../../../../convex/lib/deck";
 import { CHAPTER_BODY_CAP, type EventKind, type JobBrief, type Question, type Slide } from "../../../../convex/lib/engineTypes";
 import { validateQuestion } from "../../../../convex/lib/grading";
 import {
@@ -27,6 +28,7 @@ export type FakeChapter = {
   summary: string;
   lessons: FakeLesson[];
   deck?: Slide[];
+  deckTitle?: string;
   test?: { questions: Question[]; version: number };
 };
 export type FakeJob = Omit<JobBrief, "course"> & { courseId: string; chapters: FakeChapter[]; error?: string };
@@ -155,27 +157,19 @@ export function createFakeEngine(job: FakeJob) {
     saveDeck: (a) => {
       enterWriting("saveDeck");
       const chapter = chapterOf(a.chapterOrder);
-      const slides = Array.isArray(a.slides) ? (a.slides as Slide[]) : fail("INVALID", "slides");
-      if (slides.length < 6 || slides.length > 12) fail("INVALID", `a deck needs 6-12 slides, got ${slides.length}`);
-      slides.forEach((s, i) => {
-        const where = `slide ${i + 1}`;
-        requireText(s.title, `${where} title`, LIMITS.text);
-        requireText(s.notes, `${where} notes`, LIMITS.text * 2);
-        const list = (items: string[] | undefined, field: string) => {
-          if (!items || items.length === 0) fail("INVALID", `${where} (${s.layout}) needs ${field}`);
-          items!.forEach((item) => requireText(item, `${where} ${field}`, LIMITS.text));
-        };
-        if (s.layout === "bullets" || s.layout === "summary") list(s.bullets, "bullets");
-        if (s.layout === "two-column") {
-          list(s.left, "left");
-          list(s.right, "right");
-        }
-        if (s.layout === "quote") requireText(s.quote ?? "", `${where} quote`, LIMITS.text);
-      });
-      rejectUnknownRefs({
-        texts: slides.flatMap((s) => [s.title, ...(s.bullets ?? []), ...(s.left ?? []), ...(s.right ?? []), s.quote ?? "", s.attribution ?? "", s.notes]),
-      });
+      const raw = Array.isArray(a.slides) ? (a.slides as Slide[]) : fail("INVALID", "slides");
+      const { minSlides, maxSlides, titleChars } = DECK_RULES;
+      if (raw.length < minSlides || raw.length > maxSlides) {
+        fail("INVALID", `a deck needs ${minSlides}-${maxSlides} slides, got ${raw.length}`);
+      }
+      // The real deck schema, exactly as engine.saveDeck applies it.
+      const title = typeof a.title === "string" && a.title.trim() ? a.title : chapter.title.slice(0, titleChars);
+      const checked = checkDeckDraft({ title, slides: raw });
+      if (!checked.ok) return fail("INVALID", checked.errors.join("; "));
+      const { slides } = checked.deck;
+      rejectUnknownRefs({ texts: deckTexts(slides, checked.deck.title) });
       chapter.deck = slides;
+      chapter.deckTitle = checked.deck.title;
       events.push({ kind: "chapter", message: `Saved slide deck (${slides.length} slides)`, chapterOrder: chapter.order });
       return { deckId: `deck-${chapter.order}` };
     },
@@ -242,8 +236,13 @@ export function createFakeEngine(job: FakeJob) {
 
 export type FakeEngine = ReturnType<typeof createFakeEngine>;
 
-/** Serves a fake engine on 127.0.0.1 (random port) at `POST /engine/<op>`. */
-export async function serveFakeEngine(engine: FakeEngine): Promise<{ url: string; close: () => Promise<void> }> {
+/**
+ * Serves fake engines on 127.0.0.1 (random port) at `POST /engine/<op>`. With several engines (one
+ * job each), a call goes to the engine that owns its `jobId`; an unknown job is refused by the first.
+ */
+export async function serveFakeEngine(engines: FakeEngine | FakeEngine[]): Promise<{ url: string; close: () => Promise<void> }> {
+  const all = Array.isArray(engines) ? engines : [engines];
+  const owner = (jobId: unknown) => all.find((e) => e.job.jobId === jobId) ?? all[0]!;
   const server: Server = createServer((req, res) => {
     const reply = (status: number, body: unknown) => {
       res.writeHead(status, { "content-type": "application/json" });
@@ -263,7 +262,7 @@ export async function serveFakeEngine(engine: FakeEngine): Promise<{ url: string
         return reply(400, { ok: false, error: "INVALID: body is not JSON" });
       }
       try {
-        const result = engine.call(op, args);
+        const result = owner(args.jobId).call(op, args);
         reply(result.ok ? 200 : 400, result);
       } catch (err) {
         reply(500, { ok: false, error: `INTERNAL: ${err instanceof Error ? err.message : String(err)}` });

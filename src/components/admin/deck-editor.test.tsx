@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createAgent } from "@ui-sdk/react/agent";
 import { beforeEach, describe, expect, test, vi } from "vitest";
@@ -11,6 +11,8 @@ vi.mock("@/components/admin/use-admin-query", () => ({
   useAdminQuery: (ref: { name: string }) => data[ref.name],
 }));
 vi.mock("convex/react", () => ({ useMutation: () => updateDeck }));
+// The preview draws diagrams with Mermaid, which needs a real browser.
+vi.mock("mermaid", () => ({ default: { initialize: vi.fn(), render: vi.fn(async () => ({ svg: "<svg></svg>" })) } }));
 vi.mock("../../../convex/_generated/api", () => ({
   api: { admin: { getDeck: { name: "getDeck" }, updateDeck: { name: "updateDeck" } } },
 }));
@@ -61,6 +63,70 @@ describe("DeckEditor", () => {
     const saved = updateDeck.mock.calls[0][0] as { slides: Record<string, unknown>[] };
     expect(saved.slides[0]).toMatchObject({ layout: "quote", quote: "Hello", title: "S1" });
     expect(saved.slides[0].bullets).toBeUndefined();
+  });
+
+  test("a generated slide keeps its id, visual and code through an edit of something else", async () => {
+    const chart = { type: "chart", chartType: "bar", data: [{ label: "A", value: 1 }, { label: "B", value: 2 }] };
+    const code = { language: "bash", content: "dig example.com" };
+    data.getDeck = {
+      _id: "d1",
+      slides: [
+        { id: "s1", layout: "bullets+visual", title: "S1", bullets: ["point"], visual: chart, notes: "n" },
+        { id: "s2", layout: "code", title: "S2", code, notes: "n" },
+        ...slides.slice(2),
+      ],
+    };
+    const user = userEvent.setup();
+    render(<DeckEditor chapterId={"ch1" as never} language="en" />);
+    await user.type(screen.getByLabelText("Title"), "!");
+    await user.click(screen.getByRole("button", { name: "Save deck" }));
+    const saved = updateDeck.mock.calls[0][0] as { slides: Record<string, unknown>[] };
+    expect(saved.slides[0]).toEqual({ id: "s1", layout: "bullets+visual", title: "S1!", bullets: ["point"], visual: chart, notes: "n" });
+    expect(saved.slides[1]).toEqual({ id: "s2", layout: "code", title: "S2", code, notes: "n" });
+  });
+
+  test("the visual is edited as JSON: only a value that passes the deck schema reaches the slide", async () => {
+    const user = userEvent.setup();
+    render(<DeckEditor chapterId={"ch1" as never} language="en" />);
+    await user.selectOptions(screen.getByLabelText("Layout"), "visual-full");
+    const field = screen.getByLabelText("Visual (JSON)");
+    // A new visual slide starts with a small diagram to edit.
+    expect(JSON.parse((field as HTMLTextAreaElement).value)).toMatchObject({ type: "mermaid" });
+
+    await user.clear(field);
+    await user.type(field, "{{not json");
+    expect(screen.getByRole("alert")).toHaveTextContent("Not valid JSON yet.");
+    fireEvent.change(field, { target: { value: JSON.stringify({ type: "table", headers: ["A", "B"], rows: [["only one"]] }) } });
+    expect(screen.getByRole("alert")).toHaveTextContent("table row 1 has 1 cells for 2 headers");
+    const table = { type: "table", headers: ["Type", "Holds"], rows: [["A", "IPv4"]] };
+    fireEvent.change(field, { target: { value: JSON.stringify(table) } });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    // The preview draws it with the viewer's own component.
+    expect(within(screen.getByLabelText("Slide preview")).getByRole("columnheader", { name: "Holds" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Save deck" }));
+    const saved = updateDeck.mock.calls[0][0] as { slides: Record<string, unknown>[] };
+    expect(saved.slides[0]).toEqual({ layout: "visual-full", title: "S1", visual: table, notes: "notes 1" });
+  });
+
+  test("a code slide edits its language and source; a new slide gets an id of its own", async () => {
+    const user = userEvent.setup();
+    render(<DeckEditor chapterId={"ch1" as never} language="en" />);
+    await user.selectOptions(screen.getByLabelText("Layout"), "code");
+    await user.clear(screen.getByLabelText("Language"));
+    await user.type(screen.getByLabelText("Language"), "bash");
+    await user.type(screen.getByLabelText("Code"), "dig example.com");
+    await user.click(screen.getByRole("button", { name: "Add slide" }));
+    await user.click(screen.getByRole("button", { name: "Save deck" }));
+    const saved = updateDeck.mock.calls[0][0] as { slides: Record<string, unknown>[] };
+    expect(saved.slides[0]).toEqual({
+      layout: "code",
+      title: "S1",
+      code: { language: "bash", content: "dig example.com" },
+      bullets: ["point 1"],
+      notes: "notes 1",
+    });
+    expect(saved.slides[6]).toMatchObject({ id: "slide-7", layout: "bullets", title: "New slide" });
   });
 
   test("shows the server's error detail", async () => {

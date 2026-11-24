@@ -25,7 +25,7 @@ describe("course-builder agent configuration", () => {
       "save_sources",
       "Unknown reference",
       "```resource",
-      "6-12",
+      "8-15",
       "8-10",
       // research phase (Task 18)
       "read_resource",

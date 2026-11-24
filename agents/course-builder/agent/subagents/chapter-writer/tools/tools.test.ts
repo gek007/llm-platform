@@ -6,7 +6,6 @@ import { EngineError, type EngineClient } from "../../../lib/engine-client";
 // Fake engine: every op is a spy; tests make an op fail with the engine's own error text.
 const engine = {
   saveSubchapter: vi.fn(async () => ({ lessonId: "lesson1" })),
-  saveDeck: vi.fn(async () => ({ deckId: "deck1" })),
   saveTest: vi.fn(async () => ({ testId: "test1", version: 1 })),
   reportProgress: vi.fn(async () => {}),
 };
@@ -17,7 +16,6 @@ vi.mock("../../../lib/engine-client", async (importOriginal) => ({
 
 import rootReportProgress from "../../../tools/report_progress";
 import reportProgress from "./report_progress";
-import saveDeck from "./save_deck";
 import saveSubchapter from "./save_subchapter";
 import saveTest from "./save_test";
 
@@ -38,13 +36,6 @@ const subchapter = {
   durationMinutes: 12,
   sourceIds: ["src-a"],
 };
-
-const slides = Array.from({ length: 6 }, (_, i) => ({
-  layout: "bullets" as const,
-  title: `Slide ${i + 1}`,
-  bullets: ["Point"],
-  notes: "Say this. Then that.",
-}));
 
 const questions = Array.from({ length: 8 }, (_, i) => ({
   id: `q${i + 1}`,
@@ -69,19 +60,6 @@ describe("save_subchapter", () => {
   test("returns { ok: false, message } with the engine's Unknown reference text", async () => {
     engine.saveSubchapter.mockRejectedValueOnce(new EngineError(UNKNOWN));
     expect(await run(saveSubchapter, subchapter)).toEqual({ ok: false, message: UNKNOWN });
-  });
-});
-
-describe("save_deck", () => {
-  test("passes chapterOrder and the slides through to the engine", async () => {
-    const out = await run(saveDeck, { jobId: "job1", chapterOrder: 2, slides });
-    expect(engine.saveDeck).toHaveBeenCalledWith({ jobId: "job1", chapterOrder: 2, slides });
-    expect(out).toEqual({ ok: true, chapterOrder: 2, deckId: "deck1", slides: 6 });
-  });
-
-  test("returns { ok: false, message } with the engine's Unknown reference text", async () => {
-    engine.saveDeck.mockRejectedValueOnce(new EngineError(UNKNOWN));
-    expect(await run(saveDeck, { jobId: "job1", chapterOrder: 2, slides })).toEqual({ ok: false, message: UNKNOWN });
   });
 });
 

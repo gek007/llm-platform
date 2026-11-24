@@ -10,7 +10,6 @@ export const writerOutputSchema = z.object({
   chapterOrder: z.number().int().min(1).describe("The chapter you wrote."),
   saved: z.object({
     subchapters: z.number().int().min(0).describe("How many subchapters were saved successfully."),
-    deck: z.boolean().describe("True when the slide deck was saved."),
     test: z.boolean().describe("True when the chapter test was saved."),
   }),
   problems: z
@@ -90,13 +89,13 @@ export function buildWriterBrief(job: JobBrief, chapterOrder: number): string {
   out.push(
     `# Write chapter ${chapterOrder}: ${chapter.title}`,
     "",
-    `Write chapter ${chapterOrder} of the course below: its subchapters, its slide deck and its test, through your save tools. Use jobId ${job.jobId} and chapterOrder ${chapterOrder} in every call.`,
+    `Write chapter ${chapterOrder} of the course below: its subchapters and its test, through your save tools. Use jobId ${job.jobId} and chapterOrder ${chapterOrder} in every call.`,
     "",
     "## Course",
     "",
     `- jobId: ${job.jobId}`,
     `- Topic: ${job.topic}`,
-    `- Language: ${lang.name} (${job.language}). Write everything learners see in ${lang.name}: titles, summaries, lessons, quizzes, slides, speaker notes and test questions. Sources may be in any language; translate what you use and keep proper nouns, product names, code and identifiers as they are.`,
+    `- Language: ${lang.name} (${job.language}). Write everything learners see in ${lang.name}: titles, summaries, lessons, quizzes and test questions. Sources may be in any language; translate what you use and keep proper nouns, product names, code and identifiers as they are.`,
     `- Level: ${job.level}`,
     `- Audience: ${job.audience?.trim() || "not specified (general learners at this level)"}`,
   );
@@ -157,9 +156,9 @@ export function buildWriterBrief(job: JobBrief, chapterOrder: number): string {
     "## Rules",
     "",
     "- Each subchapter: a markdown body with 1-3 ```quiz blocks, a one-line summary and durationMinutes (whole minutes of study).",
-    "- Slide deck: 6-12 slides, varied layouts, speaker notes of 2-4 sentences on every slide. Use a `quote` slide only for text copied word for word from a source excerpt or pasted-text preview in this brief, with that source or resource as `attribution`; otherwise use no quote slides.",
+    "- The chapter's slide deck is built from your saved lessons afterwards, by a separate step: do not write slides.",
     `- Test: 8-10 questions answerable from this chapter's subchapters, mixing single, multiple and true_false. True/False options are exactly ${trueFalse}.`,
-    "- No raw URLs in titles, summaries, slides or test questions: those are plain text and any unknown http(s) URL is rejected.",
+    "- No raw URLs in titles, summaries or test questions: those are plain text and any unknown http(s) URL is rejected.",
     '- On a save error ("CODE: detail" or "Unknown reference: X"), fix what it names and save again, at most 2 retries per save; then list it in `problems`.',
   );
   return out.join("\n");

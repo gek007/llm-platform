@@ -114,6 +114,8 @@ export default defineSchema({
   slideDecks: defineTable({
     courseId: v.id("courses"),
     chapterId: v.id("chapters"),
+    /** The deck's own title; decks saved before it existed show the chapter title. */
+    title: v.optional(v.string()),
     slides: v.array(slideValidator),
     updatedAt: v.number(),
   }).index("by_chapter", ["chapterId"]),

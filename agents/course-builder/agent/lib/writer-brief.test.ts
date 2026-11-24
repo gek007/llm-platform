@@ -161,7 +161,7 @@ describe("buildWriterBrief", () => {
 
   test("restricts quotes and citations to what the brief shows", () => {
     const brief = buildWriterBrief(job(), 2);
-    expect(brief).toMatch(/quote.*word for word/i);
+    expect(brief).toMatch(/do not write slides/);
     expect(brief).toMatch(/never attribute a specific figure or quote/i);
   });
 
@@ -184,7 +184,7 @@ describe("buildWriterBrief", () => {
 
   test("states the save rules and is deterministic", () => {
     const brief = buildWriterBrief(job(), 2);
-    for (const needle of ["chapterOrder 2", "sourceIds", "6-12", "8-10", "Unknown reference"]) {
+    for (const needle of ["chapterOrder 2", "sourceIds", "8-10", "Unknown reference"]) {
       expect(brief).toContain(needle);
     }
     expect(buildWriterBrief(job(), 2)).toBe(brief);
@@ -203,7 +203,7 @@ describe("buildWriterBrief", () => {
 
 describe("writerOutputSchema", () => {
   test("accepts the writer's report and rejects a malformed one", () => {
-    const report = { chapterOrder: 2, saved: { subchapters: 3, deck: true, test: false }, problems: ["saveTest: INVALID: …"] };
+    const report = { chapterOrder: 2, saved: { subchapters: 3, test: false }, problems: ["saveTest: INVALID: …"] };
     expect(writerOutputSchema.parse(report)).toEqual(report);
     expect(writerOutputSchema.safeParse({ chapterOrder: 2, saved: { subchapters: 3 }, problems: [] }).success).toBe(false);
     expect(writerOutputSchema.safeParse({ ...report, problems: "none" }).success).toBe(false);

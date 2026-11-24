@@ -18,6 +18,7 @@ Living document. Update it whenever a step changes the stack, structure, or tool
 | 9 | Full-page LMS knowledge-graph backdrop on `/`, clickable Mux preview video in `HeroDemo`, custom signed Mux videos for TypeScript Foundations lessons 1–2, Vercel Production deployment | Done | `e507a09` |
 | 10 | Hands-on labs POC on E2B ([design](superpowers/specs/2026-11-23-labs-poc-design.md)): lab image with terminal (ttyd) and VS Code (code-server), `LabProvider` (E2B, Docker, fake), lab sessions and exercise checks in Convex, lab page | Planned | — |
 | 11 | Course engine demo ([design](superpowers/specs/2026-11-23-course-engine-design.md)): `course-builder` eve agent generates a course from a topic and resources (URL, PDF, YouTube embed, text) in English, Hebrew or Russian; chapters/subchapters, slide decks, practice quizzes, recorded chapter tests, sources; outline approval, live progress, admin review and results | Built (all 22 build tasks reviewed; in-process pipeline test from generation to learner completion; tiny-course agent eval passes; live pipeline with the real Opus agent verified in en, he and ru via `npm run verify:live-pipeline`, once against the pushed agent deployment with the course served by the production build, and end to end in the browser as a signed-in admin: generate, approve, publish, take a test, results). Pending: the production `convex/` push before `main` is pushed (see "Merging and deploying course-engine") | — |
+| 12 | Slide decks with visuals ([reference](features/slide-decks.md)): a Zod deck schema (eight layouts; Mermaid, chart, table and image-placeholder visuals; code slides), decks generated as validated JSON by a `deck-writer` subagent with retry, server-side Mermaid validation, single-slide repair and a bullets fallback; a deck viewer with keyboard navigation, overview, progress, fullscreen, light/dark and auto-scaling; chapter sidebar, generating skeleton and error state; a generated sample deck at `/samples/how-dns-works` | Done (unit, component and end-to-end tests pass; the deck pipeline and a full one-chapter write verified with the real model through the `dns-deck` and `tiny-course` evals; `convex/` pushed to `hallowed-iguana-534` with the merge, schema additions are optional fields, no data migration). Not verified: a full course generated end to end against a deployed backend, the signed-in chapter page in a browser, and the Mermaid check inside the production agent bundle | `f111ece` |
 
 Production (<https://llm-platform-xi.vercel.app>) runs the full Learnly LMS app (backed by the Clerk dev instance and Convex dev deployment `hallowed-iguana-534` until a custom domain and Convex prod deploy key are configured). Each area has a reference page in `docs/features/`:
 
@@ -27,6 +28,7 @@ Production (<https://llm-platform-xi.vercel.app>) runs the full Learnly LMS app 
 | Landing and pricing | [landing.md](features/landing.md) | `/`, `/pricing`, Pro plan ID lookup, `CheckoutButton` states |
 | Courses | [course.md](features/course.md) | `/courses`, `/courses/[slug]`, lesson player, `/dashboard` |
 | Course engine | [course-engine.md](features/course-engine.md) | Chaptered courses: chapter page, slide deck, chapter tests, completion rule, RTL, `digital-safety-basics` seed; admin generation (wizard, live view, outline approval, engine API, watchdog) |
+| Slide decks | [slide-decks.md](features/slide-decks.md) | The deck schema (`convex/lib/deck.ts`), deck generation (deck-writer, retry, diagram validation, fallback), the deck viewer and its layouts and visuals, the sample deck, how to add a layout |
 | Admin | [admin.md](features/admin.md) | `/admin/**`, `convex/admin.ts`, Mux upload/sync/webhook |
 | AI tutor | [tutor.md](features/tutor.md) | `agents/learnly/`, `src/components/tutor/`, Clerk auth on the agent channel |
 
@@ -65,6 +67,7 @@ Production (<https://llm-platform-xi.vercel.app>) runs the full Learnly LMS app 
 | Auth SDK | `@clerk/nextjs` (`CheckoutButton` from `@clerk/nextjs/experimental`) | 7.10 |
 | Markdown | `react-markdown` + `remark-gfm` + `rehype-highlight` (sync, works on server and client) | — |
 | Animation | `motion` (landing page; respects `prefers-reduced-motion`) | — |
+| Slide visuals | `mermaid` (diagrams: drawn in the deck viewer, loaded on demand; parsed in the course-builder agent to validate generated diagrams, with `jsdom` as its DOM in Node) and `recharts` (bar, line and pie visuals, loaded on demand) | mermaid 12, recharts 3 |
 | Video | `@mux/mux-player-react`, `@mux/mux-uploader-react`, `@mux/mux-node` (Convex actions) | — |
 | Agent SDK + CLI | `eve` + `ai` + `zod` (workspace agent `agents/learnly/`, proxied via `withEve` in `next.config.ts`) | eve 1.3.0 |
 | Unit/component tests | Vitest + jsdom + Testing Library + jest-dom; `convex-test` + `@edge-runtime/vm` for Convex | Vitest 5.1 |
@@ -251,15 +254,19 @@ agents/                       eve agent workspace (each subfolder is a named age
       lib/report-progress.ts  `makeReportProgressTool`, shared by the root agent and the chapter-writer
       lib/                    Also `tool-result.ts` (EngineError → `{ ok: false, message }`), `outline.ts` (length-preset check), `youtube.ts` (oEmbed), `html-text.ts`
       tools/                  Research: `get_job`, `read_resource`, `youtube_info`, `web_search`/`web_fetch` (eve built-ins), `save_sources`, `save_outline`, `report_progress`; write: `write_course` and `regenerate` (workflow tools), `finish_job`, `fail_job` + tests
-      lib/write-chapters.ts   The write fan-out shared by `write_course` and `regenerate`: `"use step"` engine calls (`loadJob`, `loadChapterContent`, `logProgress`), `runWriter` (one `ctx.agent("chapter-writer").send(...)`), `writeChapters` (`Promise.all`, one `chapter` event per writer, `{ chapters, failed }`), `missingFromRefusal`
+      lib/write-chapters.ts   The write fan-out shared by `write_course` and `regenerate`: `"use step"` engine calls (`loadJob`, `loadChapterContent`, `logProgress`), `runWriter` (one `ctx.agent("chapter-writer").send(...)`), `runDeck` (the deck pipeline wired to a `deck-writer` session and the `validateDiagrams` and `saveDeck` steps), `runChapter` (writer, then deck), `writeChapters` (`Promise.all`, one `chapter` event per chapter, `{ chapters, failed }`), `missingFromRefusal`
+      lib/generate-deck.ts    The deck pipeline as pure code: validate the model's JSON, feed errors back (2 retries), check diagrams, re-ask one slide, fall back to bullets, save
+      lib/deck-brief.ts       `buildDeckBrief(job, content, instruction?)` (the deck-writer's message: outline, style guide, saved lessons, rules)
+      lib/mermaid-validate.ts `mermaid.parse` in Node (borrows a jsdom window while the parser loads); Node-only, imported inside the step
       lib/regenerate.ts       The "Only redo <target>: <instruction>" / "Regenerate the chapter" sections and the chapter's saved content (`savedContentSection`) appended to a writer brief
       lib/writer-brief.ts     `buildWriterBrief(job, chapterOrder)` (the chapter-writer's message) and `writerOutputSchema` (its report)
-      subagents/chapter-writer/  Writes one chapter (same model and effort, `tool: false`): `save_subchapter`, `save_deck`, `save_test`, `report_progress` (the root tool re-exported) + tests
-    evals/                    `tiny-course.eval.ts` (1-chapter write end to end, costs tokens); `evals.config.ts` setup serves `lib/fake-engine.ts` (in-memory `/engine/*` with the real validators) and points `CONVEX_SITE_URL` at it
+      subagents/chapter-writer/  Writes one chapter's lessons and test (same model and effort, `tool: false`): `save_subchapter`, `save_test`, `report_progress` (the root tool re-exported) + tests
+      subagents/deck-writer/  Writes one chapter's slide deck as structured JSON (same model and effort, `tool: false`, no tools) + tests
+    evals/                    `tiny-course.eval.ts` (1-chapter write end to end) and `dns-deck.eval.ts` (the deck pipeline alone; writes the sample deck with `EVAL_DECK_OUT`), both cost tokens; `evals.config.ts` setup serves `lib/fake-engine.ts` (in-memory `/engine/*` with the real validators, one job per eval) and points `CONVEX_SITE_URL` at it
 convex/                       Convex backend functions; convex/_generated/ is written by `npx convex dev`
   auth.config.ts              Trusts Clerk session tokens (see Clerk ↔ Convex auth)
   schema.ts                   Tables and indexes (see Data model)
-  lib/                        auth.ts (identity, isAdmin, isPro), access.ts (canAccessLesson), seedData.ts
+  lib/                        auth.ts (identity, isAdmin, isPro), access.ts (canAccessLesson), seedData.ts, deck.ts (the slide deck schema in Zod, shared with the agent and the browser)
   courses.ts lessons.ts …     Public and student functions; admin.ts, mux.ts and playback.ts ("use node"), muxData.ts, playbackData.ts, http.ts for admin and video
   generation.ts engine.ts     Course engine: admin job API (create, resources, outline, approve, sources), engine read (`getJob`, `getChapterContent`) and write ops behind `/engine/*`
   crons.ts                    Watchdog: fails stalled generation jobs every 5 minutes
@@ -282,7 +289,7 @@ src/
     ui/                       App-styled UI SDK wrappers (one file per component, e.g. accordion.tsx)
     layout/                   Site header and footer
     providers/                ClerkClientProvider, ConvexClientProvider (stores the user on sign-in)
-    chapter/                  ChapterPage/ChapterView, SlideDeck, Slide, ChapterTest (course engine)
+    chapter/                  ChapterPage/ChapterView, ChapterSidebar, ChapterTest (course engine); the deck viewer: SlideDeck, Slide, slide-layouts (one component per layout), slide-stage (frame and auto-scaling), visuals/ (Mermaid, chart, table, placeholder), deck-states (skeleton, error, boundary), samples/ (a generated deck)
     markdown/                 LessonMarkdown, CodeBlock, QuizBlock, parseQuiz
     landing/ pricing/         Landing sections, full-page LMS knowledge-graph backdrop, hero animation + Mux preview player, pricing plans, Pro plan ID lookup
     course/ lesson/ video/    Catalog, course detail, lesson player, Mux player wrapper, dashboard
@@ -326,7 +333,7 @@ Defined in `convex/schema.ts`; seed data in `convex/lib/seedData.ts` (`npx conve
 | `enrollments` | `userId`, `courseId`, `enrolledAt` | `by_user`, `by_user_course`, `by_course` |
 | `lessonProgress` | `userId`, `courseId`, `lessonId`, `completedAt` | `by_user_course`, `by_user_lesson`, `by_course`, `by_lesson` |
 | `chapters` | `courseId`, `slug`, `title`, `summary`, `order` | `by_course_order`, `by_course_slug` |
-| `slideDecks` | `courseId`, `chapterId`, `slides[]`, `updatedAt` (one row per chapter) | `by_chapter` |
+| `slideDecks` | `courseId`, `chapterId`, `title?`, `slides[]` (each `id?`, `layout`, `title`, text fields, `visual?`, `code?`, `notes`), `updatedAt` (one row per chapter) | `by_chapter` |
 | `chapterTests` | `courseId`, `chapterId`, `version`, `passPercent`, `maxAttempts`, `questions[]` (one row per chapter; edits bump `version` in place) | `by_chapter`, `by_course` |
 | `testAttempts` | `userId`, `courseId`, `testId`, `testVersion`, `answers`, `scorePercent`, `passed`, `submittedAt` | `by_user_test`, `by_test`, `by_user_course` |
 | `courseResources` | `jobId`, `courseId?`, `kind`, `title`, `url?`, `storageId?`, `text?`, `origin` (`admin` \| `engine`), `readStatus` | `by_job`, `by_course` |
@@ -338,7 +345,7 @@ Defined in `convex/schema.ts`; seed data in `convex/lib/seedData.ts` (`npx conve
 | ------ | --------- |
 | `courses` | `listPublished`, `getBySlug` (outline with `locked`, no bodies; `language` and `chapters` with `hasDeck`/`test`) |
 | `lessons` | `getForViewer` (body and playback ID only when unlocked; `prev`/`next`; `language`, `chapter`, `sources`) |
-| `chapters` | `getForViewer` (deck only when unlocked, lessons, test summary with best score and attempts, `prev`/`next`) |
+| `chapters` | `getForViewer` (deck as `{ chapterId, title, slides, updatedAt }` only when unlocked, the course's `chapters` with `hasDeck`, `generation` state for admins, lessons, test summary with best score and attempts, `prev`/`next`) |
 | `enrollments` | `enroll` (`PRO_REQUIRED` error), `isEnrolled`, `listMine` |
 | `progress` | `setComplete`, `forCourse` |
 | `users`, `viewer` | `store` (upsert on sign-in), `get` (`signedIn`, `isAdmin`, `isPro`, `user`) |

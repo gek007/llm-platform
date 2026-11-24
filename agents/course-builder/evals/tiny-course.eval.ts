@@ -31,7 +31,13 @@ export default defineEval<typeof config>({
       chapter.lessons.every((l) => /```quiz\n/.test(l.body)),
       equals(true),
     );
-    t.check(chapter.deck?.length ?? 0, satisfies((n: number) => n >= 6 && n <= 12, "deck has 6-12 slides"));
+    t.check(chapter.deck?.length ?? 0, satisfies((n: number) => n >= 8 && n <= 15, "deck has 8-15 slides"));
+    t.check(chapter.deck?.[0]?.layout, equals("title"));
+    t.check(chapter.deck?.at(-1)?.layout, equals("summary"));
+    t.check(
+      (chapter.deck ?? []).filter((s) => s.visual).length,
+      satisfies((n: number) => n >= 1, "the deck has visuals (40% when generated; a failed diagram may fall back to bullets)"),
+    );
     t.check(chapter.test?.questions.length ?? 0, satisfies((n: number) => n >= 8 && n <= 10, "test has 8-10 questions"));
     t.check(engine.job.status, equals("ready"));
     t.check(
