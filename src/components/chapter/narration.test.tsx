@@ -182,6 +182,41 @@ describe("narration with the browser's voice", () => {
     expect(spoken[0]).toMatchObject({ lang: "ru-RU", voice: "Milena" });
   });
 
+  test("the Voice picker lists this language's voices, best first, and the choice is used and remembered", async () => {
+    const user = userEvent.setup();
+    const { spoken } = installSpeech(english);
+    const { unmount } = render(<SlideDeck deck={deck} language="en" />);
+    const picker = screen.getByRole("combobox", { name: "Voice" });
+    // Only English voices, the expected region first; the Russian voice is not offered.
+    expect(Array.from(picker.querySelectorAll("option")).map((o) => o.textContent)).toEqual(["Samantha (en-US)", "Daniel (en-GB)"]);
+    expect(picker).toHaveValue("Samantha");
+
+    await user.click(listen());
+    expect(spoken[0].voice).toBe("Samantha");
+    // Changing the voice while listening reads the same sentence again in the new voice.
+    await user.selectOptions(picker, "Daniel");
+    expect(spoken.at(-1)).toMatchObject({ text: "Welcome to the chapter.", voice: "Daniel", lang: "en-GB" });
+    expect(window.localStorage.getItem("learnly.deck.voice.en")).toBe("Daniel");
+
+    unmount();
+    render(<SlideDeck deck={deck} language="en" />);
+    expect(screen.getByRole("combobox", { name: "Voice" })).toHaveValue("Daniel");
+  });
+
+  test("a remembered voice the device no longer has falls back to the best one; one voice needs no picker", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("learnly.deck.voice.en", "A voice from another computer");
+    const { spoken } = installSpeech(english);
+    const { unmount } = render(<SlideDeck deck={deck} language="en" />);
+    expect(screen.getByRole("combobox", { name: "Voice" })).toHaveValue("Samantha");
+    await user.click(listen());
+    expect(spoken[0].voice).toBe("Samantha");
+    unmount();
+    // Russian has a single voice on this device: nothing to choose.
+    render(<SlideDeck deck={deck} language="ru" />);
+    expect(screen.queryByRole("combobox", { name: "Voice" })).not.toBeInTheDocument();
+  });
+
   test("a speech error stops narration and logs a warning", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const user = userEvent.setup();

@@ -45,17 +45,49 @@ export function narrationChunks(text: string): string[] {
 type VoiceLike = Pick<SpeechSynthesisVoice, "lang" | "name" | "default">;
 
 /**
- * The device's best voice for the language, or null when it has none. Prefers the expected region
- * (en-US, he-IL, ru-RU), then the higher-quality voices browsers mark in the name.
+ * The device's voices for the language, best first: the expected region (en-US, he-IL, ru-RU), then
+ * the higher-quality voices browsers mark in the name, then the browser's default. Voices of other
+ * languages are left out: they would mispronounce the text, not translate it.
  */
-export function pickVoice<V extends VoiceLike>(voices: readonly V[], language: Language): V | null {
+export function voicesFor<V extends VoiceLike>(voices: readonly V[], language: Language): V[] {
   const tag = (voice: V) => voice.lang.toLowerCase().replace("_", "-");
-  const matching = voices.filter((voice) => LANGUAGE_CODES[language].some((code) => tag(voice).split("-")[0] === code));
   const score = (voice: V) =>
     (tag(voice) === SPEECH_LANG[language].toLowerCase() ? 4 : 0) +
     (/natural|neural|enhanced|premium|siri|google/i.test(voice.name) ? 2 : 0) +
     (voice.default ? 1 : 0);
-  return matching.reduce<V | null>((best, voice) => (best === null || score(voice) > score(best) ? voice : best), null);
+  return voices
+    .filter((voice) => LANGUAGE_CODES[language].some((code) => tag(voice).split("-")[0] === code))
+    .map((voice, order) => ({ voice, order }))
+    .sort((a, b) => score(b.voice) - score(a.voice) || a.order - b.order)
+    .map(({ voice }) => voice);
+}
+
+/** The device's best voice for the language, or null when it has none. */
+export function pickVoice<V extends VoiceLike>(voices: readonly V[], language: Language): V | null {
+  return voicesFor(voices, language)[0] ?? null;
+}
+
+const VOICE_CHANGED = "learnly:deck-voice";
+const voiceKey = (language: Language) => `learnly.deck.voice.${language}`;
+// Used when localStorage is unavailable: the choice then lasts for the page only.
+const rememberedVoices = new Map<Language, string>();
+
+/** The voice the viewer chose for a language (by name), remembered across decks and visits. */
+function readChosenVoice(language: Language): string | null {
+  try {
+    return window.localStorage.getItem(voiceKey(language));
+  } catch {
+    return rememberedVoices.get(language) ?? null;
+  }
+}
+
+function subscribeToChosenVoice(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(VOICE_CHANGED, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(VOICE_CHANGED, onChange);
+  };
 }
 
 const NO_VOICES: SpeechSynthesisVoice[] = [];
@@ -103,7 +135,14 @@ type Options = {
 export function useNarration({ slideKey, text, language, paused = false, onSlideEnd }: Options) {
   const supported = useSyncExternalStore(subscribeToNothing, speechSupported, () => false);
   const voices = useSyncExternalStore(subscribeToVoices, currentVoices, () => NO_VOICES);
-  const voice = useMemo(() => pickVoice(voices, language), [voices, language]);
+  const options = useMemo(() => voicesFor(voices, language), [voices, language]);
+  const chosen = useSyncExternalStore(
+    subscribeToChosenVoice,
+    () => readChosenVoice(language),
+    () => null,
+  );
+  // The viewer's choice when this device still has it, else the best voice for the language.
+  const voice = options.find((option) => option.name === chosen) ?? options[0] ?? null;
   const chunks = useMemo(() => narrationChunks(text), [text]);
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState({ key: slideKey, index: 0 });
@@ -161,8 +200,24 @@ export function useNarration({ slideKey, text, language, paused = false, onSlide
     return true;
   }, [voice]);
   const stop = useCallback(() => setPlaying(false), []);
+  /** Chooses one of `voices` by name; narration in progress continues in the new voice. */
+  const setVoice = useCallback(
+    (name: string) => {
+      try {
+        window.localStorage.setItem(voiceKey(language), name);
+      } catch {
+        rememberedVoices.set(language, name);
+      }
+      window.dispatchEvent(new Event(VOICE_CHANGED));
+    },
+    [language],
+  );
 
   return {
+    /** The device's voices for the course language, best first. */
+    voices: options,
+    voiceName: voice?.name ?? null,
+    setVoice,
     /** The browser can speak at all; without it the deck shows no narration controls. */
     supported,
     playing,

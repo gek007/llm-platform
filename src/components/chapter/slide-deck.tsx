@@ -227,6 +227,22 @@ export function SlideDeck({ deck, language, label }: SlideDeckProps) {
                 <Toggle pressed={autoAdvance} onPressedChange={setAutoAdvance}>
                   Auto-advance
                 </Toggle>
+                {narration.voices.length > 1 ? (
+                  // Only this language's voices: another language's voice would mispronounce the notes.
+                  <select
+                    aria-label="Voice"
+                    dir="ltr"
+                    value={narration.voiceName ?? ""}
+                    onChange={(event) => narration.setVoice(event.target.value)}
+                    className="max-w-52 rounded-lg border border-line-strong bg-surface-2 px-3 py-2 text-sm text-fg hover:border-accent/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  >
+                    {narration.voices.map((voice) => (
+                      <option key={voice.name} value={voice.name}>
+                        {voice.name} ({voice.lang.replace("_", "-")})
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
               </>
             ) : null}
             <Toggle pressed={overview} onPressedChange={setOverview}>
