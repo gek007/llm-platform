@@ -1,9 +1,10 @@
 // @vitest-environment node
 import { afterEach, describe, expect, test } from "vitest";
 import { createEngineClient, EngineError } from "../../agent/lib/engine-client";
+import { fakeDeck } from "../../../../src/lib/course-builder/fake-deck";
 import { createFakeEngine, serveFakeEngine, tinyCourseJob } from "./fake-engine";
 
-const slides = Array.from({ length: 6 }, (_, i) => ({ layout: "bullets" as const, title: `S${i + 1}`, bullets: ["Point"], notes: "Say it." }));
+const slides = fakeDeck("Budget basics");
 const questions = Array.from({ length: 8 }, (_, i) => ({
   id: `q${i + 1}`,
   kind: "true_false" as const,
@@ -56,7 +57,7 @@ describe("eval fake engine", () => {
     expect(engine.job.status).toBe("ready");
     expect(await client.getChapterContent({ jobId: "fakejob_tiny_course", chapterOrder: 1 })).toMatchObject({
       lessons: [{ order: 1, truncated: false }, { order: 2, truncated: false }],
-      deckSlideTitles: ["S1", "S2", "S3", "S4", "S5", "S6"],
+      deckSlideTitles: slides.map((s) => s.title),
       testPrompts: expect.arrayContaining(["Statement 1"]),
     });
     expect((await client.getJob({ jobId: "fakejob_tiny_course" })).course?.chapters[0]).toMatchObject({ hasDeck: true, hasTest: true });
@@ -67,7 +68,7 @@ describe("eval fake engine", () => {
   test("validates like the real engine: counts, questions, refs, sources, orders", async () => {
     const { client } = await start();
     await expect(client.saveDeck({ jobId: "fakejob_tiny_course", chapterOrder: 1, slides: slides.slice(0, 5) })).rejects.toThrow(
-      "INVALID: a deck needs 6-12 slides, got 5",
+      "INVALID: a deck needs 8-15 slides, got 5",
     );
     await expect(
       client.saveTest({ jobId: "fakejob_tiny_course", chapterOrder: 1, questions: questions.map((q) => ({ ...q, correct: [0, 1] })) }),

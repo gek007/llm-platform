@@ -237,23 +237,32 @@ const deckShape = {
   slides: z.array(slideSchema).min(R.minSlides).max(R.maxSlides),
 };
 
-function checkDeck(deck: { slides: SlideShape[] }, ctx: z.RefinementCtx) {
-  const { slides } = deck;
-  if (slides.length === 0) return;
+type DeckLevelProblem = { index: number; field: "layout" | "id"; message: string };
+
+/** Rules across slides: title first, summary last, unique ids. Works on unvalidated slides too. */
+function deckLevelProblems(slides: readonly { id?: unknown; layout?: unknown }[]): DeckLevelProblem[] {
+  const out: DeckLevelProblem[] = [];
+  if (slides.length === 0) return out;
   if (slides[0].layout !== "title") {
-    ctx.addIssue({ code: "custom", path: ["slides", 0, "layout"], message: 'the first slide must use the "title" layout' });
+    out.push({ index: 0, field: "layout", message: 'the first slide must use the "title" layout' });
   }
   const last = slides.length - 1;
   if (slides[last].layout !== "summary") {
-    ctx.addIssue({ code: "custom", path: ["slides", last, "layout"], message: 'the last slide must use the "summary" layout' });
+    out.push({ index: last, field: "layout", message: 'the last slide must use the "summary" layout' });
   }
   const seen = new Set<string>();
-  slides.forEach((slide, i) => {
-    if (seen.has(slide.id)) {
-      ctx.addIssue({ code: "custom", path: ["slides", i, "id"], message: `slide id "${slide.id}" is used twice` });
-    }
+  slides.forEach((slide, index) => {
+    if (typeof slide.id !== "string") return;
+    if (seen.has(slide.id)) out.push({ index, field: "id", message: `slide id "${slide.id}" is used twice` });
     seen.add(slide.id);
   });
+  return out;
+}
+
+function checkDeck(deck: { slides: SlideShape[] }, ctx: z.RefinementCtx) {
+  for (const p of deckLevelProblems(deck.slides)) {
+    ctx.addIssue({ code: "custom", path: ["slides", p.index, p.field], message: p.message });
+  }
 }
 
 /** What the model writes: the deck without `chapterId`, which the pipeline stamps itself. */
@@ -311,12 +320,36 @@ export function formatIssues(error: z.ZodError, input?: unknown): string[] {
 
 export type DeckCheck<T> = { ok: true; deck: T } | { ok: false; errors: string[] };
 
-/** Validates what the model returned for a whole deck: shape and deck rules, then the visual share. */
-export function validateGeneratedDeck(data: unknown): DeckCheck<DeckDraft> {
+/** The slides of unvalidated data, when it at least has an array of objects there. */
+function looseSlides(data: unknown): { id?: unknown; layout?: unknown; visual?: unknown }[] | null {
+  const slides = (data as { slides?: unknown } | null | undefined)?.slides;
+  return Array.isArray(slides) && slides.every((s) => s && typeof s === "object") ? slides : null;
+}
+
+/**
+ * Checks a deck draft against the schema and lists every problem at once. Zod runs the rules across
+ * slides only when each slide's shape is valid, so on a shape error they are checked here on the
+ * raw data too: the model gets the whole list in one round instead of one retry per layer.
+ */
+export function checkDeckDraft(data: unknown): DeckCheck<DeckDraft> {
   const parsed = deckDraftSchema.safeParse(data);
-  if (!parsed.success) return { ok: false, errors: formatIssues(parsed.error, data) };
-  const problems = generatedDeckProblems(parsed.data);
-  return problems.length > 0 ? { ok: false, errors: problems } : { ok: true, deck: parsed.data };
+  if (parsed.success) return { ok: true, deck: parsed.data };
+  const errors = formatIssues(parsed.error, data);
+  const slides = looseSlides(data);
+  const acrossSlides = (slides ? deckLevelProblems(slides) : []).map((p) => {
+    const id = slides?.[p.index]?.id;
+    return `slide ${p.index + 1}${typeof id === "string" ? ` (${id})` : ""} ${p.field}: ${p.message}`;
+  });
+  return { ok: false, errors: [...new Set([...acrossSlides, ...errors])] };
+}
+
+/** Validates what the model returned for a whole deck: shape and deck rules, and the visual share. */
+export function validateGeneratedDeck(data: unknown): DeckCheck<DeckDraft> {
+  const check = checkDeckDraft(data);
+  const slides = check.ok ? check.deck.slides : looseSlides(data);
+  const share = slides ? generatedDeckProblems({ slides }) : [];
+  if (!check.ok) return { ok: false, errors: [...check.errors, ...share] };
+  return share.length > 0 ? { ok: false, errors: share } : check;
 }
 
 /** Validates one slide (a single-slide repair). */

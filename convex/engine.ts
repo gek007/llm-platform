@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery, type QueryCtx } from "./_generated/server";
 import { deepEqual, requireText, TEXT_LIMIT, validateTestQuestion } from "./lib/contentValidation";
-import { DECK_RULES, deckDraftSchema, deckTexts, formatIssues } from "./lib/deck";
+import { checkDeckDraft, DECK_RULES, deckTexts } from "./lib/deck";
 import {
   eventKindValidator,
   outlineValidator,
@@ -531,9 +531,9 @@ export const saveDeck = internalMutation({
       title: args.title?.trim() || chapter.title.slice(0, DECK_RULES.titleChars),
       slides: args.slides,
     };
-    const parsed = deckDraftSchema.safeParse(draft);
-    if (!parsed.success) fail("INVALID", formatIssues(parsed.error, draft).join("; "));
-    const { title, slides } = parsed.data;
+    const checked = checkDeckDraft(draft);
+    if (!checked.ok) fail("INVALID", checked.errors.join("; "));
+    const { title, slides } = checked.deck;
     rejectUnknownRefs(await knownRefs(ctx, job._id), { texts: deckTexts(slides, title) });
 
     const existing = await ctx.db

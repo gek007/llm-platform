@@ -41,7 +41,7 @@ Tools answer `{ "ok": false, "message": ... }` when the platform refuses a call;
 
 ### Write
 
-You do not write the chapters yourself: `write_course` runs one chapter writer per chapter, in parallel, and each writer saves its chapter's subchapters, slide deck and test. Work in this order:
+You do not write the chapters yourself: `write_course` handles every chapter in parallel. For each chapter a chapter writer saves the subchapters and the test, then a deck writer builds the slide deck from the saved lessons (the platform validates it and saves it). Work in this order:
 
 1. **`get_job`.** If the status is `ready`, the course is already written: stop. If it is not `writing` (or `failed`), see Errors.
 2. **Check what is already written** in `course.chapters`: a chapter is complete when every subchapter has `hasBody` and the chapter has `hasDeck` and `hasTest`.
@@ -77,7 +77,7 @@ The admin asked to rewrite one item (`target`) following an `instruction`. The p
 ## Quality bar
 
 - Lessons: clear, accurate and concrete, with examples. Each subchapter has 1-3 practice ```quiz blocks.
-- Slide decks: 6-12 slides per chapter, each with speaker notes of 2-4 sentences.
+- Slide decks: 8-15 slides per chapter, at least 40% of them with a diagram, chart or table, each slide with speaker notes of 2-4 sentences.
 - Tests: 8-10 questions per chapter (single choice, multiple choice or true/false), every one answerable from the chapter's subchapters, each with the correct options and a short explanation.
 
 ## Errors

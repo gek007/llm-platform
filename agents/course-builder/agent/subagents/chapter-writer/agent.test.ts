@@ -16,11 +16,12 @@ describe("chapter-writer subagent configuration", () => {
 
   test("instructions cover language, citations, embeds, quiz/slide/test rules, retries and the report", () => {
     const text = readFileSync(resolve(import.meta.dirname, "instructions.md"), "utf8");
+    // The slide deck is not this writer's job any more (subagents/deck-writer).
+    expect(text).not.toContain("save_deck");
     for (const needle of [
       "course language",
       "proper nouns",
       "save_subchapter",
-      "save_deck",
       "save_test",
       "report_progress",
       "sourceIds",
@@ -29,8 +30,6 @@ describe("chapter-writer subagent configuration", () => {
       "```youtube",
       "```resource",
       "1-3",
-      "6-12",
-      "2-4 sentences",
       "8-10",
       "True/False",
       "Unknown reference",
@@ -38,7 +37,6 @@ describe("chapter-writer subagent configuration", () => {
       "pasted text",
       "2 retries",
       "problems",
-      "word for word",
       "never attribute a specific figure or quote",
       "Only redo",
       "Regenerate the chapter",

@@ -6,16 +6,18 @@ import {
   loadChapterContent,
   loadJob,
   logProgress,
+  runDeck,
   runWriter,
   writeChapters,
 } from "../lib/write-chapters";
 
 /**
  * Regenerate one item for the admin. `chapter` → the write fan-out for that one chapter, with the
- * instruction; `subchapter` / `deck` / `test` → one chapter-writer run with the chapter's brief plus
- * "Only redo <target>: <instruction>" and the chapter's saved content (lesson bodies, deck titles,
- * test prompts; engine `getChapterContent`), so the writer saves only that item and grounds it in
- * what learners already read. The first write never loads saved content. The route moved the job
+ * instruction (lessons and test, then the deck); `deck` → the deck pipeline alone, built from the
+ * saved lessons with the instruction in the deck brief; `subchapter` / `test` → one chapter-writer
+ * run with the chapter's brief plus "Only redo <target>: <instruction>" and the chapter's saved
+ * content (lesson bodies, deck titles, test prompts; engine `getChapterContent`), so the writer
+ * saves only that item and grounds it in what learners already read. The route moved the job
  * ready → writing before dispatching; the agent calls `finish_job` afterwards (back to ready).
  */
 export default defineWorkflowTool({
@@ -45,8 +47,28 @@ export default defineWorkflowTool({
 
     if (target.kind === "chapter") {
       await logProgress(jobId, "info", `Regenerating chapter ${chapter.order}`, chapter.order);
-      const summary = await writeChapters(ctx, job, [chapter.order], chapterInstructionSection(instruction));
+      const summary = await writeChapters(ctx, job, [chapter.order], {
+        extra: chapterInstructionSection(instruction),
+        deckInstruction: instruction,
+      });
       return { ...summary, target, redone: summary.failed.length === 0 };
+    }
+
+    if (target.kind === "deck") {
+      // The deck never goes through the chapter writer: the deck pipeline builds it from the saved
+      // lessons (which it loads itself), with the admin's instruction in the deck brief.
+      const name = targetName(target, chapter);
+      await logProgress(jobId, "info", `Regenerating ${name}`, chapter.order);
+      const deck = await runDeck(ctx, job, chapter.order, instruction);
+      const outcome = deck.ok ? `Regenerated ${name}` : `Regenerating ${name} did not save it: ${deck.reason}`;
+      await logProgress(jobId, "chapter", outcome, chapter.order);
+      return {
+        ok: true as const,
+        target,
+        redone: deck.ok,
+        saved: { subchapters: 0, deck: deck.ok, test: false },
+        problems: deck.ok ? [] : [deck.reason],
+      };
     }
 
     if (target.kind === "subchapter" && !chapter.subchapters.some((s) => s.order === target.subchapterOrder)) {
@@ -71,7 +93,7 @@ export default defineWorkflowTool({
       return { ok: false as const, message };
     }
     const { saved: report, problems } = run.result;
-    const redone = target.kind === "deck" ? report.deck : target.kind === "test" ? report.test : report.subchapters >= 1;
+    const redone = target.kind === "test" ? report.test : report.subchapters >= 1;
     const issues = problems.length > 0 ? `: ${problems.join("; ")}` : "";
     const outcome = !redone
       ? `Regenerating ${name} did not save it${issues}`
