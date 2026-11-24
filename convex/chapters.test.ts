@@ -119,6 +119,75 @@ describe("chapters.getForViewer", () => {
     expect(JSON.stringify(res)).not.toContain("explanation");
   });
 
+  it("returns the deck as { chapterId, title, slides }: an older deck gets slide ids and the chapter's title", async () => {
+    const t = makeT();
+    const { ch1 } = await seed(t, { tier: "free", status: "published" });
+    const res = await asUser(t).query(api.chapters.getForViewer, args);
+    // The seeded deck was saved before ids and deck titles existed.
+    expect(res?.deck).toEqual({
+      chapterId: ch1,
+      title: "One",
+      slides: [{ id: "slide-1", layout: "title", title: "Hello", notes: "n" }],
+      updatedAt: 0,
+    });
+    await t.run(async (ctx) => {
+      const deck = await ctx.db.query("slideDecks").first();
+      await ctx.db.patch(deck!._id, {
+        title: "A deck of its own",
+        updatedAt: 5,
+        slides: [
+          { id: "intro", layout: "title", title: "Hello", notes: "n" },
+          {
+            id: "flow",
+            layout: "visual-full",
+            title: "Flow",
+            visual: { type: "mermaid", code: "flowchart LR\n  A --> B" },
+            notes: "n",
+          },
+        ],
+      });
+    });
+    const next = await asUser(t).query(api.chapters.getForViewer, args);
+    expect(next?.deck).toMatchObject({ title: "A deck of its own", updatedAt: 5 });
+    expect(next?.deck?.slides.map((s) => s.id)).toEqual(["intro", "flow"]);
+    expect(next?.deck?.slides[1].visual).toEqual({ type: "mermaid", code: "flowchart LR\n  A --> B" });
+  });
+
+  it("lists the course's chapters for the sidebar, with whether each has slides", async () => {
+    const t = makeT();
+    await seed(t, { tier: "free", status: "published" });
+    const expected = [
+      { slug: "ch-1", title: "One", order: 1, hasDeck: true },
+      { slug: "ch-2", title: "Two", order: 2, hasDeck: false },
+    ];
+    expect((await asUser(t).query(api.chapters.getForViewer, args))?.chapters).toEqual(expected);
+    // Also for a locked viewer: the outline is public, the deck is not.
+    const out = await t.query(api.chapters.getForViewer, { ...args, chapterSlug: "ch-2" });
+    expect(out?.chapters).toEqual(expected);
+    expect(out?.deck).toBeNull();
+  });
+
+  it("tells an admin how the course's generation is going; learners never see it", async () => {
+    const t = makeT();
+    const { courseId } = await seed(t, { tier: "free", status: "published" });
+    // A hand-made course has no generation.
+    expect((await asAdmin(t).query(api.chapters.getForViewer, args))?.generation).toBeNull();
+    const jobId = await t.run(async (ctx) => {
+      const job = await ctx.db.query("generationJobs").first();
+      await ctx.db.patch(courseId, { generationJobId: job!._id });
+      return job!._id;
+    });
+    expect((await asAdmin(t).query(api.chapters.getForViewer, args))?.generation).toEqual({ jobId, status: "ready", error: null });
+    await t.run((ctx) => ctx.db.patch(jobId, { status: "failed", error: "No progress for 15 minutes" }));
+    expect((await asAdmin(t).query(api.chapters.getForViewer, args))?.generation).toEqual({
+      jobId,
+      status: "failed",
+      error: "No progress for 15 minutes",
+    });
+    expect((await asUser(t).query(api.chapters.getForViewer, args))?.generation).toBeNull();
+    expect((await t.query(api.chapters.getForViewer, args))?.generation).toBeNull();
+  });
+
   it("reports best attempt and attempts used across versions", async () => {
     const t = makeT();
     const { courseId, testId } = await seed(t, { tier: "free", status: "published" });
