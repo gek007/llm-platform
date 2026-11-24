@@ -32,7 +32,7 @@ topic → research → outline (admin approves) → per chapter:
 3. **Validate and retry.** `lib/generate-deck.ts` checks the answer against the schema and the generation rule (at least 40% of slides carry a visual). On failure it sends the list of problems back and asks again, at most twice.
 4. **Diagrams.** Every Mermaid diagram is parsed with `mermaid.parse` in the agent (`lib/mermaid-validate.ts`). An invalid one re-asks only that slide, once, with the parser's error; if it is still invalid the slide falls back to the `bullets` layout without the visual.
 5. **Store.** `engine.saveDeck` (`convex/engine.ts`) validates against the same schema again and saves to `slideDecks`. Older decks need no migration: the new fields are optional and missing slide ids are filled in on read.
-6. **Render.** `<SlideDeck deck language>` (`src/components/chapter/slide-deck.tsx`) draws the JSON: arrow keys, Space, Esc for the overview, progress bar, counter, fullscreen, speaker notes, a light theme, and auto-scaling so nothing leaves the slide. Mermaid and Recharts load only when a slide needs them. A chapter without a deck shows its lessons, as before.
+6. **Render.** `<SlideDeck deck language>` (`src/components/chapter/slide-deck.tsx`) draws the JSON: arrow keys, Space, Esc for the overview, progress bar, counter, fullscreen, speaker notes, narration with the browser's voice ("Listen"), a light theme, and auto-scaling so nothing leaves the slide. Mermaid and Recharts load only when a slide needs them. A chapter without a deck shows its lessons, as before.
 
 Run the pipeline on its own with the real model (one root turn and one deck-writer call):
 

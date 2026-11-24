@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Toggle } from "@/components/ui/toggle";
 import { DeckThemeContext, useStoredDeckTheme } from "./deck-theme";
 import { Slide } from "./slide";
+import { LANGUAGE_NAMES, useNarration } from "./use-narration";
 
 type SlideDeckProps = {
   /** The deck JSON: `{ chapterId, title, slides }`. Everything shown comes from it. */
@@ -40,9 +41,31 @@ export function SlideDeck({ deck, language, label }: SlideDeckProps) {
   const [overview, setOverview] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [theme, setTheme] = useStoredDeckTheme();
+  const [autoAdvance, setAutoAdvance] = useState(true);
+  const [noVoice, setNoVoice] = useState(false);
   const region = useRef<HTMLDivElement>(null);
   const touchStart = useRef<number | null>(null);
   const rtl = RTL_LANGUAGES.includes(language);
+
+  const last = slides.length - 1;
+  const current = Math.max(0, Math.min(index, last));
+  const slide = slides[current] as RenderableSlide | undefined;
+  const goTo = (target: number) => setIndex(Math.max(0, Math.min(last, target)));
+  const go = (delta: number) => goTo(current + delta);
+
+  // Narration reads the slide's speaker notes aloud; when they end it moves to the next slide and
+  // keeps reading, like a presenter, until the last slide (or stops after one with auto-advance off).
+  const narration = useNarration({
+    slideKey: slide?.id ?? "",
+    text: slide?.notes ?? "",
+    language,
+    paused: overview,
+    onSlideEnd: () => {
+      if (!autoAdvance || current >= last) return false;
+      setIndex(current + 1);
+      return true;
+    },
+  });
 
   useEffect(() => {
     const onChange = () => setFullscreen(document.fullscreenElement === region.current);
@@ -50,7 +73,7 @@ export function SlideDeck({ deck, language, label }: SlideDeckProps) {
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
-  if (slides.length === 0) {
+  if (!slide) {
     return (
       <p role="status" className="text-sm text-muted">
         No slides yet.
@@ -58,11 +81,11 @@ export function SlideDeck({ deck, language, label }: SlideDeckProps) {
     );
   }
 
-  const last = slides.length - 1;
-  const current = Math.min(index, last);
-  const slide = slides[current];
-  const goTo = (target: number) => setIndex(Math.max(0, Math.min(last, target)));
-  const go = (delta: number) => goTo(current + delta);
+  function listen(on: boolean) {
+    if (!on) return narration.stop();
+    // A device may have no voice for the course's language; say so rather than stay silent.
+    setNoVoice(!narration.play());
+  }
 
   function onKeyDown(event: KeyboardEvent) {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -172,6 +195,13 @@ export function SlideDeck({ deck, language, label }: SlideDeckProps) {
           </div>
         )}
 
+        {narration.caption ? (
+          // The sentence being read, as a caption: for following along and for anyone without sound.
+          <p data-slot="narration-caption" dir="auto" className="rounded-lg border border-line bg-surface-2 px-4 py-2.5 text-center text-sm text-fg">
+            {narration.caption}
+          </p>
+        ) : null}
+
         {showNotes && !overview ? (
           <aside aria-label="Notes" dir="auto" className="rounded-lg border border-line bg-surface-2 p-4 text-sm text-muted">
             {slide.notes}
@@ -189,6 +219,16 @@ export function SlideDeck({ deck, language, label }: SlideDeckProps) {
             Next
           </Button>
           <div className="ms-auto flex flex-wrap items-center gap-2">
+            {narration.supported ? (
+              <>
+                <Toggle pressed={narration.playing} onPressedChange={listen}>
+                  Listen
+                </Toggle>
+                <Toggle pressed={autoAdvance} onPressedChange={setAutoAdvance}>
+                  Auto-advance
+                </Toggle>
+              </>
+            ) : null}
             <Toggle pressed={overview} onPressedChange={setOverview}>
               Overview
             </Toggle>
@@ -203,6 +243,12 @@ export function SlideDeck({ deck, language, label }: SlideDeckProps) {
             </Button>
           </div>
         </div>
+        {noVoice ? (
+          <p role="status" className="text-sm text-muted" dir="ltr" lang="en">
+            This device has no {LANGUAGE_NAMES[language]} voice, so these slides cannot be read aloud here. Speaker notes
+            show the same text.
+          </p>
+        ) : null}
       </div>
     </DeckThemeContext>
   );

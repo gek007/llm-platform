@@ -137,6 +137,51 @@ test.describe("slide deck viewer", () => {
     await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
   });
 
+  test("Listen reads each slide's speaker notes and moves on when they end", async ({ page }) => {
+    // A stand-in for the browser's speech engine (headless Chromium has no voices): it records
+    // what it is asked to say and reports each sentence finished a moment later.
+    await page.addInitScript(() => {
+      const spoken: string[] = [];
+      const voice = { lang: "en-US", name: "Test voice", default: true, localService: true, voiceURI: "test" };
+      class Utterance {
+        lang = "";
+        voice: unknown = null;
+        onend: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        constructor(public text: string) {}
+      }
+      Object.defineProperty(window, "speechSynthesis", {
+        configurable: true,
+        value: {
+          getVoices: () => [voice],
+          addEventListener() {},
+          removeEventListener() {},
+          cancel() {},
+          resume() {},
+          speak(utterance: Utterance) {
+            spoken.push(utterance.text);
+            setTimeout(() => utterance.onend?.(), 40);
+          },
+        },
+      });
+      Object.assign(window, { SpeechSynthesisUtterance: Utterance, __spoken: spoken });
+    });
+    await page.reload();
+    await expect(deck(page).getByRole("heading", { name: "How a DNS lookup works" })).toBeVisible();
+
+    await deck(page).getByRole("button", { name: "Listen" }).click();
+    // The notes of slide 1 end, the deck advances by itself and keeps reading.
+    await expect(counter(page)).toHaveText("3 / 14");
+    await deck(page).getByRole("button", { name: "Listen" }).click();
+    await expect(deck(page).getByRole("button", { name: "Listen" })).toHaveAttribute("aria-pressed", "false");
+    await expect(deck(page).locator("[data-slot='narration-caption']")).toHaveCount(0);
+
+    const spoken = await page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken);
+    expect(spoken[0]).toBe("In this chapter we follow one domain name from your browser all the way to an IP address.");
+    // Slide 2's notes were read after slide 1's, in order.
+    expect(spoken.join(" ")).toContain("This short line captures the whole idea of DNS.");
+  });
+
   test("a phone gets the 3:4 frame and stacked columns", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await goToSlide(page, 4);
